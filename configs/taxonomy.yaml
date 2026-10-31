@@ -1,0 +1,38 @@
+# Taxonomia de tema e urgência (AGENTS.md, seção 7).
+# Status: proposta inicial, aguardando a leitura de 200 reclamações e a aprovação em G2.
+# As regras de uso estão em docs/annotation_guidelines.md.
+version: 0.1.0
+
+topics:
+  - id: cobranca_indevida
+    description: Cobrança, débito ou fatura com valor que o consumidor não reconhece ou contesta.
+  - id: cancelamento
+    description: Pedido de cancelamento de produto, serviço, plano ou assinatura não atendido ou dificultado.
+  - id: reembolso_estorno
+    description: Devolução de dinheiro ou estorno pedido e não feito, atrasado ou parcial.
+  - id: entrega_atraso
+    description: Produto não entregue, entregue fora do prazo, extraviado ou entregue errado.
+  - id: produto_defeito
+    description: Produto com defeito, avaria, vício ou diferente do anunciado, incluindo troca e garantia.
+  - id: servico_indisponivel
+    description: Serviço contratado interrompido, instável ou não prestado, como internet, energia, água ou conta bloqueada.
+  - id: fraude_golpe
+    description: Golpe, fraude, transação ou contratação não reconhecida, ou uso indevido de dados por terceiros.
+  - id: oferta_contrato
+    description: Descumprimento de oferta, publicidade ou contrato, mudança de condições, venda casada ou reajuste.
+  - id: atendimento
+    description: Falta de resposta, demora, desrespeito ou falha do atendimento como queixa principal.
+  - id: dados_cadastro
+    description: Erro, alteração ou exclusão de cadastro e pedidos sobre dados pessoais.
+  - id: credito_negativacao
+    description: Negativação indevida, score, empréstimo, financiamento, cartão de crédito ou renegociação de dívida.
+  - id: outro
+    description: Reclamação que não se encaixa em nenhum tema acima.
+
+urgency:
+  - id: baixa
+    description: Insatisfação sem prejuízo em andamento nem prazo próximo.
+  - id: media
+    description: Prejuízo financeiro ou de serviço em andamento, sem os sinais de urgência alta.
+  - id: alta
+    description: Risco à saúde, fraude em andamento, interrupção de serviço essencial, prazo crítico ou vulnerabilidade relatada.
