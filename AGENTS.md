@@ -503,6 +503,7 @@ customer-feedback-ai/
 ├── .gitignore
 ├── .github/workflows/ci.yml
 ├── configs/
+│   ├── data.yaml
 │   ├── pricing.yaml
 │   ├── retrieval.yaml
 │   ├── splits.yaml
@@ -558,9 +559,11 @@ make lint            # Ruff
 make format          # formatação
 make typecheck       # mypy
 make test            # testes unitários
+make synthetic-data  # corpus sintético, para testar sem o ConsumerBR
 make data            # raw -> bronze -> silver
 make sample          # gera dev_sample
 make splits          # gera splits e manifestos
+make taxonomy-sample # 200 reclamações de train para a leitura antes de G2
 make annotate        # abre a ferramenta de anotação
 make label-silver    # lote LLM, exige CONFIRM_COST=1
 make train-local     # B0, B1, C1, C2 e C3

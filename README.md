@@ -171,7 +171,13 @@ As decisões do projeto ficam em [`docs/decisions.md`](docs/decisions.md).
 
 Os comandos abaixo são o fluxo planejado e estarão disponíveis conforme o roadmap avançar.
 
-Pré-requisitos: Python 3.12 e [uv](https://docs.astral.sh/uv/). Hoje funcionam `make setup`, `make lint`, `make typecheck` e `make test`. Os demais alvos avisam o marco em que serão implementados e terminam com erro. `make help` lista todos.
+Pré-requisitos: Python 3.12 e [uv](https://docs.astral.sh/uv/). Hoje funcionam os alvos de qualidade (`make setup`, `make lint`, `make typecheck` e `make test`) e os de dados (`make data`, `make sample`, `make splits` e `make taxonomy-sample`). Os demais avisam o marco em que serão implementados e terminam com erro. `make help` lista todos.
+
+Para testar o pipeline de dados sem o corpus, use o corpus sintético em uma pasta separada:
+
+```bash
+make synthetic-data data sample splits taxonomy-sample DATA_DIR=data/synthetic
+```
 
 ```bash
 git clone <url-do-repositorio>
@@ -186,7 +192,9 @@ Depois de obter o ConsumerBR e colocar o CSV em `data/raw/`:
 
 ```bash
 make data
+make sample
 make splits
+make taxonomy-sample
 make annotate
 make label-silver CONFIRM_COST=1
 make train-local
