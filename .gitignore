@@ -1,0 +1,51 @@
+# --- Segredos (AGENTS.md, regra 6) ---
+.env
+.env.*
+!.env.example
+
+# --- Dados do corpus e derivados (regras 6 e 9) ---
+/data/
+/exports/
+*.csv
+*.parquet
+*.npy
+*.npz
+*.duckdb
+*.duckdb.wal
+# Fixtures sintéticas podem ser versionadas.
+!tests/fixtures/**/*.csv
+!tests/fixtures/**/*.parquet
+
+# --- Pesos e artefatos de modelos ---
+/models/
+/artifacts/
+*.safetensors
+*.pt
+*.pth
+*.bin
+*.onnx
+*.joblib
+*.pkl
+
+# --- Tracking local ---
+/mlruns/
+/mlartifacts/
+
+# --- Python e ferramentas ---
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.ipynb_checkpoints/
+
+# --- Editor e sistema ---
+.vscode/
+.idea/
+.DS_Store
