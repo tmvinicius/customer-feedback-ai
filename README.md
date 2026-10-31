@@ -171,6 +171,8 @@ As decisões do projeto ficam em [`docs/decisions.md`](docs/decisions.md).
 
 Os comandos abaixo são o fluxo planejado e estarão disponíveis conforme o roadmap avançar.
 
+Pré-requisitos: Python 3.12 e [uv](https://docs.astral.sh/uv/). Hoje funcionam `make setup`, `make lint`, `make typecheck` e `make test`. Os demais alvos avisam o marco em que serão implementados e terminam com erro. `make help` lista todos.
+
 ```bash
 git clone <url-do-repositorio>
 cd customer-feedback-ai
@@ -243,4 +245,4 @@ O plano técnico completo está em [`AGENTS.md`](AGENTS.md).
 
 ## Licença
 
-A licença do código será definida antes da publicação. Os dados do ConsumerBR seguem a licença própria e não fazem parte deste repositório.
+O código deste repositório está licenciado sob a [Apache License 2.0](LICENSE). Os dados do ConsumerBR seguem licença própria, não fazem parte deste repositório e não são cobertos pela Apache 2.0.

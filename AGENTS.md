@@ -69,7 +69,7 @@ Pare e peça decisão do mantenedor nestes pontos:
 | G3  | Durante o M2                          | Anotar o gold set. Esse trabalho é humano                                                                                                                                         |
 | G4  | Antes de job LLM acima do limite      | Aprovar a estimativa de custo                                                                                                                                                     |
 | G5  | Antes de avaliar em `test`            | Confirmar os candidatos congelados                                                                                                                                                |
-| G6  | M6                                    | Aprovar publicação do repositório e licença do código                                                                                                                             |
+| G6  | M6                                    | Aprovar publicação do repositório. A licença do código já foi decidida: Apache 2.0 (`docs/decisions.md`)                                                                          |
 
 Enquanto G1 não for aprovado, use apenas fixtures sintéticas. Se a licença impedir parte do plano, aplique a seção 20.
 
@@ -494,6 +494,7 @@ Antes de implementar o cliente, confirme em `platform.claude.com/docs` os modelo
 ```text
 customer-feedback-ai/
 ├── AGENTS.md
+├── LICENSE                   # Apache 2.0, apenas o código
 ├── README.md
 ├── Makefile
 ├── pyproject.toml
