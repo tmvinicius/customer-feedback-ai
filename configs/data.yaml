@@ -1,0 +1,48 @@
+# Ingestão e limpeza do ConsumerBR (AGENTS.md, seção 6).
+# Lido por src/customer_feedback_ai/data/config.py.
+
+csv:
+  # "auto" deixa o DuckDB detectar o delimitador. Troque por "," ou ";" se a detecção falhar.
+  delimiter: auto
+  quote: '"'
+  escape: '"'
+  # Formatos aceitos para datas, além do ISO 8601 que o DuckDB lê direto.
+  timestamp_formats:
+    - "%d/%m/%Y %H:%M:%S"
+    - "%d/%m/%Y %H:%M"
+    - "%d/%m/%Y"
+
+validation:
+  # Fração máxima de valores que não convertem para o tipo esperado, por coluna.
+  # Acima disso o pipeline para, em vez de seguir com dados corrompidos.
+  max_cast_failure_rate: 0.01
+
+sample:
+  # make sample: amostra de desenvolvimento retirada da camada silver.
+  dev_sample_size: 50000
+  # make taxonomy-sample: leitura do mantenedor antes de G2 (AGENTS.md, seção 7).
+  taxonomy_review_size: 200
+  seed: 20260101
+
+duckdb:
+  # Limite de memória do DuckDB, por exemplo "8GB". null usa o padrão (80% da RAM).
+  # O que não couber na memória vai para <DATA_DIR>/tmp, ignorado pelo Git.
+  memory_limit: null
+
+# Valores do artigo (Duarte et al., PROPOR 2026), usados só como teste de sanidade.
+# Divergências são reportadas no perfil e documentadas em docs/data_card.md.
+paper_reference:
+  tolerance: 0.02
+  records: 3150552
+  companies: 1445
+  period_start: "2021-05-01"
+  period_end: "2025-04-30"
+  response_rate: 0.9811
+  standardized_response_rate: 0.9229
+  complaint_chars_mean: 772
+  complaint_chars_median: 567
+  complaints_per_company_median: 131
+  complaints_per_company_max: 131381
+  missing_data_abertura: 309653
+  missing_localizacao: 309653
+  missing_status: 309658

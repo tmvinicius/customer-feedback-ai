@@ -1,0 +1,16 @@
+ID,id_reclamacao,reclamacao_labeled,empresa,data_abertura,localizacao,resposta_labeled,padronizada,status,avaliacao_nota,data_resposta,avaliacao_comentario
+E-01,1001,"Comprei uma geladeira, pedido ""PED-123"", e ela chegou amassada.
+A loja não responde.",Loja Exemplo Ácme,15/03/2022 14:30:00,SP,"Olá, [NOME]. Faremos a troca.",sim,Resolvida,5.0,16/03/2022 09:00:00,Ótimo
+E-02,1002,"  COMPREI   UMA   GELADEIRA, PEDIDO ""PED-123"", E ELA CHEGOU AMASSADA.
+A LOJA NÃO RESPONDE. ",Loja Exemplo Ácme,2022-04-01 10:00:00,SP,Resposta padrão.,1,Não Resolvida,2,2022-04-02 10:00:00,
+E-03,1003,"Comprei uma geladeira, pedido ""PED-123"", e ela chegou amassada.
+A loja não responde.",Loja Exemplo Ácme,,,Resposta padrão.,True,,,,
+E-04,1004,   ,Banco Fictício,2023-05-05 12:00:00,RJ,,,Não Avaliada,,,
+E-05,1005,Meu nome é [NOME] e meu e-mail [EMAIL] foi usado numa compra que não fiz.,Banco Fictício,2024-02-10T08:00:00,RJ,"Prezado(a), verificaremos.",não,Não Avaliada,,2024-02-11T08:00:00,
+E-06,1006,A internet caiu de novo e fiquei sem trabalhar.,  Loja   Exemplo  ÁCME ,2024-08-01,MG,Pedimos desculpas.,0,Não Resolvida,3,2024-08-03,
+E-07,1007,Reclamação sem data de abertura.,Banco Fictício,,,,,,,,
+E-08,1008,Cobrança indevida no último dia do ano.,Banco Fictício,31/12/2023,BA,Estornamos o valor.,True,Resolvida,4,02/01/2024,
+E-09,1009,Cobrança indevida no primeiro dia do ano.,Banco Fictício,01/01/2024,BA,Estornamos o valor.,False,Resolvida,5,03/01/2024,
+E-10,1010,Atraso na entrega no fim do semestre.,Transportadora Teste,30/06/2024 23:59:59,PE,Em análise.,FALSE,Não Avaliada,,01/07/2024,
+E-11,1011,Atraso na entrega no início do semestre.,Transportadora Teste,2024-07-01 00:00:00,PE,Em análise.,f,Resolvida,1,2024-07-05 00:00:00,Ruim
+E-12,1012,Plano de saúde negou exame urgente; meu pai tem 82 anos.,Saúde Teste,2025-04-30 18:00:00,RS,Vamos analisar.,n,Não Resolvida,1,,

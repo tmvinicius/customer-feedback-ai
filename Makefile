@@ -9,8 +9,15 @@ RUN := $(UV) run --locked
 # missing step never looks like a success (AGENTS.md, rule 14).
 NOT_IMPLEMENTED = echo "make $@: ainda não implementado (marco $(1)). Veja AGENTS.md, seção 17." >&2; exit 1
 
+# Data targets read DATA_DIR from the environment or .env (default: data).
+# Command-line values are passed on, e.g. `make data DATA_DIR=data/synthetic`.
+# Input for `make splits`: silver (full corpus) or dev_sample.
+SOURCE ?= silver
+SYNTHETIC_ROWS ?= 20000
+
 .PHONY: help setup lint format typecheck test \
-	data sample splits annotate label-silver train-local eval-dev \
+	synthetic-data data sample splits taxonomy-sample \
+	annotate label-silver train-local eval-dev \
 	build-index eval-retrieval eval-offline eval-final report demo
 
 help: ## Lista os alvos disponíveis
@@ -37,14 +44,20 @@ test: ## Testes unitários
 
 # --- Dados (M1) ---
 
-data: ## raw -> bronze -> silver (M1)
-	@$(call NOT_IMPLEMENTED,M1)
+synthetic-data: ## Corpus inventado em DATA_DIR/raw; use DATA_DIR=data/synthetic
+	$(RUN) python -m customer_feedback_ai.pipelines.synthetic --rows $(SYNTHETIC_ROWS)
 
-sample: ## Gera dev_sample com cerca de 50 mil linhas (M1)
-	@$(call NOT_IMPLEMENTED,M1)
+data: ## raw -> bronze -> silver, com perfil e manifestos (RAW=arquivo.csv opcional)
+	$(RUN) python -m customer_feedback_ai.pipelines.data $(if $(RAW),--raw $(RAW))
 
-splits: ## Gera splits temporais e manifestos (M1)
-	@$(call NOT_IMPLEMENTED,M1)
+sample: ## Gera dev_sample com cerca de 50 mil linhas a partir da silver
+	$(RUN) python -m customer_feedback_ai.pipelines.sample
+
+splits: ## Gera splits temporais e manifestos (SOURCE=silver ou dev_sample)
+	$(RUN) python -m customer_feedback_ai.pipelines.splits --source $(SOURCE)
+
+taxonomy-sample: ## Exporta 200 reclamações de train para a leitura antes de G2
+	$(RUN) python -m customer_feedback_ai.pipelines.taxonomy_sample --source $(SOURCE)
 
 # --- Rótulos (M2) ---
 

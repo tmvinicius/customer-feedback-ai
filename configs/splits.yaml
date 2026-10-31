@@ -1,0 +1,21 @@
+# Splits temporais e empresas ocultas (AGENTS.md, seção 6).
+# Datas são inclusivas e comparadas com a data (sem hora) de data_abertura.
+# end: null significa "até o fim do corpus".
+
+windows:
+  train:
+    start: null
+    end: 2023-12-31
+  val:
+    start: 2024-01-01
+    end: 2024-06-30
+  test:
+    start: 2024-07-01
+    end: null
+
+holdout_companies:
+  # Uma empresa é oculta quando o hash SHA-256 de "<salt>:<nome normalizado>"
+  # cai abaixo desta fração. A regra não depende das outras empresas, então a
+  # mesma empresa é oculta no corpus completo e no dev_sample.
+  fraction: 0.05
+  salt: customer-feedback-ai-v1
