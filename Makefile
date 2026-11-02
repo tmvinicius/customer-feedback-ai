@@ -14,10 +14,13 @@ NOT_IMPLEMENTED = echo "make $@: ainda não implementado (marco $(1)). Veja AGEN
 # Input for `make splits`: silver (full corpus) or dev_sample.
 SOURCE ?= silver
 SYNTHETIC_ROWS ?= 20000
+# label-silver: LLM=fake runs offline; APPROVED_USD records the G4 approval;
+# WAIT=1 polls until the batch ends. CONFIRM_COST=1 is read from the environment.
+LLM ?= anthropic
 
 .PHONY: help setup lint format typecheck test \
 	synthetic-data data sample splits taxonomy-sample \
-	annotate label-silver train-local eval-dev \
+	annotate gold-report label-silver train-local eval-dev \
 	build-index eval-retrieval eval-offline eval-final report demo
 
 help: ## Lista os alvos disponíveis
@@ -36,8 +39,8 @@ format: ## Ruff: formata o código e aplica correções seguras
 	$(RUN) ruff format .
 	$(RUN) ruff check --fix .
 
-typecheck: ## mypy em modo estrito
-	$(RUN) mypy
+typecheck: ## mypy em modo estrito (src, tests e ui)
+	$(RUN) mypy src tests ui
 
 test: ## Testes unitários
 	$(RUN) pytest
@@ -61,11 +64,17 @@ taxonomy-sample: ## Exporta 200 reclamações de train para a leitura antes de G
 
 # --- Rótulos (M2) ---
 
-annotate: ## Abre a ferramenta de anotação (M2)
-	@$(call NOT_IMPLEMENTED,M2)
+annotate: ## Prepara a fila do gold set e abre a ferramenta de anotação
+	$(RUN) python -m customer_feedback_ai.pipelines.gold_sample
+	$(RUN) streamlit run ui/annotate.py --server.headless true \
+		--browser.gatherUsageStats false --client.toolbarMode minimal
 
-label-silver: ## Lote LLM de rótulos silver, exige CONFIRM_COST=1 (M2)
-	@$(call NOT_IMPLEMENTED,M2)
+gold-report: ## Exporta gold_dev e gold_test e gera o relatório de cobertura e kappa
+	$(RUN) python -m customer_feedback_ai.pipelines.gold_report
+
+label-silver: ## Rótulos silver em lote; exige CONFIRM_COST=1 e G1 (LLM=fake roda offline)
+	$(RUN) python -m customer_feedback_ai.pipelines.label_silver --llm $(LLM) \
+		$(if $(APPROVED_USD),--approved-usd $(APPROVED_USD)) $(if $(WAIT),--wait)
 
 # --- Modelos e avaliação (M3 a M6) ---
 
