@@ -1,0 +1,23 @@
+# Preços da API da Anthropic em US$ por milhão de tokens (AGENTS.md, seções 8 e 16).
+# Fonte: https://platform.claude.com/docs/en/about-claude/pricing (consultada em 2026-11-11).
+# Atualize a data e os valores sempre que conferir a página de novo.
+checked_at: 2026-11-11
+source: https://platform.claude.com/docs/en/about-claude/pricing
+# Desconto do Message Batches API sobre entrada e saída.
+batch_discount: 0.5
+
+models:
+  claude-haiku-5-5:
+    # Preços para prompts de até 100 mil tokens. Acima disso o Haiku 5.5 cobra mais,
+    # e o cálculo de custo recusa a estimativa em vez de usar o preço errado.
+    max_prompt_tokens: 100000
+    input: 0.10
+    output: 0.50
+    cache_write_5m: 0.125
+    cache_read: 0.01
+  claude-sonnet-5-5:
+    max_prompt_tokens: null
+    input: 2.00
+    output: 10.00
+    cache_write_5m: 2.50
+    cache_read: 0.10
