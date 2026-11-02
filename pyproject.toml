@@ -13,10 +13,12 @@ classifiers = [
 ]
 # Dependencies are added per milestone (see docs/decisions.md).
 dependencies = [
+    "anthropic>=2.8,<3",
     "duckdb>=2.0,<3",
     "pydantic>=2.14,<3",
     "pydantic-settings>=2.16,<3",
     "pyyaml>=6.0,<7",
+    "streamlit>=1.67,<2",
 ]
 
 [dependency-groups]
