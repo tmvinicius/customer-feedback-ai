@@ -1,5 +1,6 @@
 """Shared fixtures for the data pipeline tests. All data here is synthetic."""
 
+import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
@@ -20,7 +21,9 @@ from customer_feedback_ai.data.duck import connect
 from customer_feedback_ai.data.paths import DataPaths
 from customer_feedback_ai.data.splits import SplitResult
 from customer_feedback_ai.data.synthetic import write_synthetic_csv
+from customer_feedback_ai.labeling.config import GoldConfig, LabelingConfig, SilverConfig
 from customer_feedback_ai.pipelines import data as data_pipeline
+from customer_feedback_ai.pipelines import gold_sample as gold_sample_pipeline
 from customer_feedback_ai.pipelines import sample as sample_pipeline
 from customer_feedback_ai.pipelines import splits as splits_pipeline
 from customer_feedback_ai.pipelines import taxonomy_sample as taxonomy_pipeline
@@ -85,3 +88,40 @@ def m1_run(tmp_path_factory: pytest.TempPathFactory, data_config: DataConfig) ->
     return run_m1_pipeline(
         tmp_path_factory.mktemp("m1") / "data", data_config, SYNTHETIC_SPLITS_CONFIG
     )
+
+
+# --- M2: labeling ---------------------------------------------------------------
+
+SMALL_LABELING = LabelingConfig(
+    gold=GoldConfig(
+        gold_dev_size=40,
+        gold_test_size=60,
+        gold_test_unseen_share=0.25,
+        reannotation_fraction=0.1,
+        reannotation_min_days=7,
+        min_examples_per_topic_in_gold_dev=5,
+        min_high_urgency_in_gold_test=30,
+        seed=1,
+    ),
+    silver=SilverConfig(
+        silver_train_size=200,
+        silver_val_size=50,
+        seed=2,
+        model_role="cheap",
+        prompt=REPO_ROOT / "prompts" / "classify" / "v1.md",
+        effort="low",
+        max_tokens=1024,
+        batch_chunk_size=100,
+        chars_per_token=3.5,
+        expected_output_tokens=200,
+    ),
+)
+
+
+@pytest.fixture
+def labeling_paths(m1_run: PipelineRun, tmp_path: Path) -> DataPaths:
+    """A data directory with the synthetic splits and a small annotation queue."""
+    paths = DataPaths(tmp_path / "data")
+    shutil.copytree(m1_run.paths.splits_dir("silver"), paths.splits_dir("silver"))
+    gold_sample_pipeline.run(paths, SMALL_LABELING)
+    return paths

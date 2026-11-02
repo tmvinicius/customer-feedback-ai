@@ -47,6 +47,41 @@ class DataPaths:
     def taxonomy_review_sample(self) -> Path:
         return self.gold_dir / "taxonomy_review_sample.csv"
 
+    @property
+    def annotation_dir(self) -> Path:
+        return self.gold_dir / "annotation"
+
+    @property
+    def annotation_queue(self) -> Path:
+        return self.annotation_dir / "queue.parquet"
+
+    @property
+    def annotation_labels(self) -> Path:
+        return self.annotation_dir / "labels.jsonl"
+
+    @property
+    def gold_report(self) -> Path:
+        return self.annotation_dir / "report.json"
+
+    def gold_set(self, name: str) -> Path:
+        return self.gold_dir / f"{name}.parquet"
+
+    @property
+    def silver_labels_dir(self) -> Path:
+        return self.gold_dir / "silver"
+
+    @property
+    def silver_state(self) -> Path:
+        return self.silver_labels_dir / "batch_state.json"
+
+    @property
+    def llm_cache_dir(self) -> Path:
+        return self.root / "cache" / "llm"
+
+    @property
+    def llm_cost_log(self) -> Path:
+        return self.root / "logs" / "llm_calls.jsonl"
+
     def split_input(self, source: SplitSource) -> Path:
         return self.silver if source == "silver" else self.dev_sample
 

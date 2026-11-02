@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     llm_budget_usd: float = Field(default=30.0, gt=0)
     llm_job_approval_threshold_usd: float = Field(default=5.0, gt=0)
 
+    # Sending corpus text to an external LLM needs human decision G1 (AGENTS.md, rule 10).
+    allow_external_llm: bool = False
+
+    # Identifies who wrote each gold label (AGENTS.md, section 7).
+    annotator_id: str = Field(default="anotador_1", min_length=1)
+
     cases_index: Literal["synthetic", "real"] = "synthetic"
 
     data_dir: Path = Path("data")

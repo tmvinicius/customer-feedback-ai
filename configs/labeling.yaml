@@ -1,0 +1,38 @@
+# Conjuntos de rótulos do M2 (AGENTS.md, seção 7).
+
+gold:
+  # Anotação humana (G3). gold_dev vem da janela val; gold_test da janela test,
+  # com cerca de 25% de empresas ocultas.
+  gold_dev_size: 150
+  gold_test_size: 350
+  gold_test_unseen_share: 0.25
+  # Reanotação cega de 10% de cada conjunto, liberada só depois de 7 dias.
+  reannotation_fraction: 0.10
+  reannotation_min_days: 7
+  # Alertas do relatório (AGENTS.md, seção 7).
+  min_examples_per_topic_in_gold_dev: 5
+  min_high_urgency_in_gold_test: 30
+  seed: 20260201
+
+silver:
+  # Rótulos do LLM em lote. silver_val exclui os itens de gold_dev; os itens de
+  # gold_dev recebem rótulos do LLM à parte, só para medir a concordância.
+  silver_train_size: 20000
+  silver_val_size: 2000
+  seed: 20260202
+  # LLM_MODEL_CHEAP do .env (AGENTS.md, seção 13).
+  model_role: cheap
+  prompt: prompts/classify/v1.md
+  effort: low
+  # O Haiku 5.5 pensa por padrão, e o raciocínio conta em max_tokens.
+  max_tokens: 1024
+  # Marca o prompt de sistema (~1,2 mil tokens) para cache de prompt. O mínimo do
+  # Haiku 5.5 é 512 tokens. A estimativa de custo ignora esse desconto.
+  cache_system_prompt: true
+  # Tamanho máximo de cada lote enviado ao Message Batches API.
+  batch_chunk_size: 10000
+  # Estimativa de custo antes de rodar: caracteres por token do texto em
+  # português e tokens de saída esperados por item (raciocínio + JSON).
+  # A estimativa é comparada com o custo real no manifesto.
+  chars_per_token: 3.5
+  expected_output_tokens: 200
