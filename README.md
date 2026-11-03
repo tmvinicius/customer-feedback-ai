@@ -171,12 +171,22 @@ As decisões do projeto ficam em [`docs/decisions.md`](docs/decisions.md).
 
 Os comandos abaixo são o fluxo planejado e estarão disponíveis conforme o roadmap avançar.
 
-Pré-requisitos: Python 3.12 e [uv](https://docs.astral.sh/uv/). Hoje funcionam os alvos de qualidade (`make setup`, `make lint`, `make typecheck` e `make test`) e os de dados (`make data`, `make sample`, `make splits` e `make taxonomy-sample`). Os demais avisam o marco em que serão implementados e terminam com erro. `make help` lista todos.
+Pré-requisitos: Python 3.12 e [uv](https://docs.astral.sh/uv/). Hoje funcionam os alvos de qualidade (`make setup`, `make lint`, `make typecheck` e `make test`), os de dados (`make data`, `make sample`, `make splits` e `make taxonomy-sample`) e os de rótulos (`make annotate`, `make label-silver` e `make gold-report`). Os demais avisam o marco em que serão implementados e terminam com erro. `make help` lista todos.
 
 Para testar o pipeline de dados sem o corpus, use o corpus sintético em uma pasta separada:
 
 ```bash
 make synthetic-data data sample splits taxonomy-sample DATA_DIR=data/synthetic
+```
+
+Os rótulos também rodam com dados sintéticos e sem custo: `make annotate` abre a ferramenta de anotação, e `make label-silver LLM=fake` usa um LLM falso e offline, cujos rótulos não valem como resultado.
+
+```bash
+make annotate DATA_DIR=data/synthetic
+```
+
+```bash
+make label-silver gold-report LLM=fake DATA_DIR=data/synthetic
 ```
 
 ```bash
@@ -197,6 +207,7 @@ make splits
 make taxonomy-sample
 make annotate
 make label-silver CONFIRM_COST=1
+make gold-report
 make train-local
 make eval-dev
 make build-index
@@ -206,7 +217,7 @@ make report
 make demo
 ```
 
-`make label-silver`, `make eval-dev` e `make eval-final` usam uma API paga de LLM. Revise a estimativa de custo antes de executá-los.
+`make label-silver`, `make eval-dev` e `make eval-final` usam uma API paga de LLM. Revise a estimativa de custo antes de executá-los. `make label-silver` mostra a estimativa e só envia o lote com `CONFIRM_COST=1` e `ALLOW_EXTERNAL_LLM=true` no `.env`, depois da aprovação G1. Acima de US$ 5, também exige `APPROVED_USD` com o valor aprovado em G4.
 
 ## Estrutura
 

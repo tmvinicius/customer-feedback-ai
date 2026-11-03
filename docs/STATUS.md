@@ -1,44 +1,49 @@
 # Status
 
-Marco ativo: M1, Dados e taxonomia. O código está pronto e testado com dados sintéticos. O aceite depende de G1 (rodar no corpus real) e de G2 (aprovar taxonomia e diretrizes).
-Último commit: `b249211` (docs: add status, decision log and test). As mudanças do M1 ainda não foram commitadas e aguardam revisão do mantenedor.
+Marco ativo: M2, Rótulos. O código está pronto e testado com dados sintéticos e o `FakeLLM`. O aceite depende de G1 (corpus real e envio ao LLM), de G3 (anotação humana) e do primeiro lote silver real.
+Último commit na `main`: `b249211` (docs: add status, decision log and test). As mudanças do M1, da G2 parcial e do M2 aguardam revisão e commit do mantenedor.
 
 ## Concluído
 
 ### M0
 
-- Fundação aceita pelo mantenedor e integrada na `main` (commits `44de5a3` a `b249211`), com a licença Apache 2.0 do código decidida.
-- O aceite formal do M0 ainda depende de G1.
+- Fundação integrada na `main`, com a licença Apache 2.0 do código decidida. O aceite formal depende de G1.
 
 ### M1
 
-- Ingestão raw -> bronze com DuckDB, leitura do CSV como texto e conversão explícita de tipos. Falhas de conversão são contadas, e o pipeline para acima de 1% por coluna.
-- Limpeza bronze -> silver: NFC, espaços nas pontas, tags `[NOME]` preservadas, remoção de reclamações vazias e deduplicação pelo hash do texto normalizado, mantendo a ocorrência mais antiga.
-- Splits `train`, `val`, `test` e `test_unseen_company` por data e por hash da empresa, com verificação automática de sobreposição, janelas e empresas ocultas.
-- Manifestos em todas as etapas, com SHA-256 e tamanho das entradas e saídas, contagens, seed, configuração com hash, commit e versões.
-- EDA enxuta em `data/eda/*.json`: faltantes, duplicatas, tamanhos, distribuição por empresa, status e nota, e comparação com o artigo.
-- `make sample` (`dev_sample`), `make taxonomy-sample` (200 reclamações de `train`) e `make synthetic-data` (corpus inventado).
-- `configs/data.yaml`, `configs/splits.yaml` e `configs/taxonomy.yaml`.
-- `docs/data_card.md` e `docs/annotation_guidelines.md` em rascunho, para G2.
-- G2 parcial (2026-11-10): o mantenedor aprovou as regras de urgência para telefonia e internet, para dúvida entre níveis e para negativação. Elas estão aplicadas nas diretrizes e registradas em `docs/decisions.md`.
-- Evidências:
-  - `make lint typecheck test`: Ruff sem erros, 50 arquivos formatados, mypy strict sem erros em 43 arquivos, 119 testes aprovados.
-  - Reprodutibilidade: o pipeline completo roda duas vezes sobre o mesmo CSV sintético, e manifestos (sem data e commit), Parquets e perfis são idênticos (`tests/unit/test_pipeline_reproducibility.py`).
-  - Splits sem sobreposição de `ID` e `text_hash`, empresas ocultas só em `test_unseen_company`, datas dentro das janelas e limites inclusivos (`tests/unit/test_splits.py`).
-  - Os testes falharam como esperado com dois defeitos introduzidos de propósito: manter a duplicata mais nova e deixar empresas ocultas entrarem em `train`. No segundo, o próprio pipeline recusou gravar os splits.
-  - `make synthetic-data data sample splits taxonomy-sample DATA_DIR=<pasta>` rodou do começo ao fim com 20 mil linhas.
-  - Escala: 1 milhão de linhas sintéticas (333 MB) levaram 17 s e cerca de 2 GB de memória em `make data`, e 3,3 s em `make splits`, numa máquina com 4 CPUs. O corpus real tem cerca de 15 vezes esse tamanho e textos mais longos, então isso é só um indicativo.
+- Ingestão, limpeza, deduplicação, splits, manifestos, EDA, `dev_sample` e amostra para a taxonomia, testados com dados sintéticos. Detalhes em `docs/data_card.md` e nas decisões de 2026-11-04.
+- G2 parcial (2026-11-10): as regras de urgência foram aprovadas. A lista de temas depende da leitura das 200 reclamações.
+- Pendente no aceite do M1: rodar no corpus real e documentar as divergências em relação ao artigo (G1), e concluir G2.
+
+### M2
+
+- **Gold set:** `make annotate` sorteia a fila uma única vez (150 itens de `gold_dev` em `val`; 350 de `gold_test` em `test`, com 25% de empresas ocultas; 10% de cada conjunto marcados para reanotação) e abre a ferramenta de anotação cega em Streamlit.
+- **Rótulos:** ficam em JSONL só de acréscimo, e vale o último registro. A reanotação abre só depois de 7 dias e não mostra o primeiro rótulo.
+- **Relatório:** `make gold-report` exporta `gold_dev` e `gold_test`, mede o kappa da reanotação e a concordância do LLM com `gold_dev`, e emite os alertas da seção 7 (tema com menos de 5 exemplos, menos de 30 casos de urgência alta).
+- **Rótulos silver:** `make label-silver` cobre `silver_train` (20 mil de `train`), `silver_val` (2 mil de `val`, sem os itens de `gold_dev`) e `gold_dev_llm`. Usa o Message Batches API com structured outputs, reenvia uma vez as respostas inválidas e não paga duas vezes pela mesma requisição, graças ao cache. O manifesto registra o custo estimado e o real.
+- **Travas:** sem `ALLOW_EXTERNAL_LLM=true` (G1), o envio é bloqueado; sem `CONFIRM_COST=1`, só a estimativa aparece; acima de US$ 5, é preciso `APPROVED_USD` (G4); o teto de US$ 30 vale para o total gasto.
+- **Camada de LLM:** `BatchLLMClient`, cliente da Anthropic, `FakeLLM`, preços em `configs/pricing.yaml` (conferidos em 2026-11-11), cache e registro de custo sem texto. A camada foi antecipada do M3.
+- **Prompt:** `prompts/classify/v1.md`, com o texto entre tags e a instrução de tratá-lo como dado.
+- **Evidências:**
+  - `make lint typecheck test`: Ruff sem erros, 74 arquivos formatados, mypy strict sem erros em 66 arquivos (agora inclui `ui/`), 187 testes aprovados.
+  - Os testes falharam como esperado com dois defeitos introduzidos de propósito: remover a trava de G1 e voltar a compartilhar o cache entre o `FakeLLM` e o cliente real.
+  - Esse segundo defeito existia de fato na primeira versão e foi encontrado na rodada sintética: rótulos falsos teriam sido reaproveitados por uma execução real. O defeito foi corrigido, e o teste fica como proteção.
+  - Rodada sintética (20 mil linhas): fila com 150 e 350 itens; `make label-silver LLM=fake` rotulou 11.382 itens a custo zero. O cliente real foi bloqueado sem G1 e, com G1 mas sem `CONFIRM_COST=1`, mostrou a estimativa.
+  - `make annotate` subiu a ferramenta (`/_stcore/health` respondeu `ok`). A tela foi conferida com um print sobre dados sintéticos, e o teste com `AppTest` grava um rótulo de ponta a ponta.
+  - Estimativa para o corpus real, calculada com `estimate_cost`: US$ 2,73 para 22.150 requisições (32,5 milhões de tokens de entrada e 4,4 milhões de saída), abaixo do limite de US$ 5. A conta usa o prompt v1, textos com a média do artigo (772 caracteres), 200 tokens de saída por item e o preço do Batch do Haiku 5.5. É só um indicativo: o valor que conta é o que `make label-silver` mostrar com os textos reais.
 
 ## Próximo passo
 
-- Mantenedor: ler a licença do ConsumerBR no Zenodo e responder G1.
-- Depois de G1, na máquina do mantenedor: colocar o CSV em `data/raw/` e rodar `make data sample splits taxonomy-sample`.
-- Preencher os valores observados em `docs/data_card.md` a partir de `data/eda/bronze_profile.json` e dos manifestos, e explicar as divergências em relação ao artigo.
-- Mantenedor: ler `data/gold/taxonomy_review_sample.csv`, dizer se a lista de temas cobre bem as reclamações (unir, dividir ou criar temas) e concluir G2.
+- Mantenedor: responder G1. Sem ela, nada roda no corpus real.
+- Depois de G1: rodar o pipeline do M1 no corpus, ler as 200 reclamações e concluir G2 (lista de temas).
+- Mantenedor (G3): anotar `gold_dev` com `make annotate`, reanotar os 10% depois de 7 dias e rodar `make gold-report`.
+- Com G1 e a chave da API no `.env`: rodar `make label-silver`, revisar a estimativa e submeter com `CONFIRM_COST=1`. Depois comparar o custo real com o estimado no manifesto.
+- Anotar `gold_test` só depois de revisar a taxonomia com base em `gold_dev`, se algum tema tiver menos de 5 exemplos.
 
 ## Bloqueios
 
-- G1 pendente (mantenedor). Sem ele, o pipeline não roda no corpus real e as divergências em relação ao artigo não podem ser medidas.
-- G2 parcial (mantenedor). Falta aprovar a lista de temas, o que depende da leitura das 200 reclamações, que depende de G1.
-- `zenodo.org` está bloqueado na rede da sessão de nuvem do agente. O corpus precisa ser processado na máquina do mantenedor.
-- O formato real do CSV (delimitador, formato de datas e de booleanos, valores de `status`) não foi visto. Se divergir, `make data` para e aponta a coluna, e o ajuste é feito em `configs/data.yaml`.
+- G1 pendente (mantenedor). Bloqueia o corpus real, o envio de texto ao LLM e, portanto, os rótulos silver reais.
+- G2 parcial (mantenedor). Falta a lista de temas.
+- G3 (mantenedor). A anotação do gold set é humana.
+- `zenodo.org` e a API da Anthropic não foram usados nesta sessão de nuvem. Nenhum rótulo real, custo real ou concordância real foi medido.
+- O formato real do CSV ainda não foi visto (ver M1).

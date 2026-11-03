@@ -21,7 +21,7 @@ Use apenas o texto da reclamação (`reclamacao_labeled`). Não consulte a empre
 4. Avalie a urgência pelos critérios da seção 5, com base no que está relatado. Não tente verificar se é verdade.
 5. Se ficar em dúvida, escolha o rótulo que julga mais provável, marque o campo de dúvida da ferramenta e escreva o motivo em poucas palavras. Não escolha o nível mais alto só por precaução: o gold set mede o que está no texto, e a segurança de urgência é papel das regras da cascata.
 
-A anotação é cega: a ferramenta não mostra nenhuma saída de modelo nem rótulos anteriores.
+A anotação é cega: a ferramenta não mostra a empresa, nenhuma saída de modelo nem rótulos anteriores. Ela é aberta com `make annotate` e grava cada rótulo em `data/gold/annotation/labels.jsonl`. Para corrigir um item, anote de novo: vale o último rótulo. `make gold-report` exporta `gold_dev` e `gold_test` e mostra o progresso, o kappa da reanotação e os alertas da seção 7.
 
 ## 3. Temas
 

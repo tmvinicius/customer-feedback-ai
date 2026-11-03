@@ -26,7 +26,7 @@ Consequências:
 
 Quando uma decisão humana for tomada, atualize a tabela e crie uma entrada abaixo com a resposta do mantenedor.
 
-## 2026-11-01: Ferramentas e convenções da fundação (M0)
+## 2026-11-04: Ferramentas e convenções da fundação (M0)
 
 Decisão:
 
@@ -44,14 +44,14 @@ Alternativas: declarar toda a stack no M0; `hatchling` como backend; `os.environ
 
 Consequências: o `uv.lock` muda a cada marco que adiciona dependências. `pydantic-settings` é uma dependência pequena que não estava na tabela de stack. Código novo precisa de anotações de tipo completas, inclusive nos testes.
 
-## 2026-11-01: Licença do código
+## 2026-11-04: Licença do código
 
 Decisão: o código do repositório usa a Apache License 2.0, conforme o arquivo `LICENSE` já versionado. O `pyproject.toml` declara `license = "Apache-2.0"` e `license-files = ["LICENSE"]`. A licença cobre apenas o código. O corpus ConsumerBR, os dados derivados e os pesos treinados com ele seguem a licença do Zenodo, que G1 avalia. A aprovação da publicação do repositório continua pendente em G6.
 Motivo: decisão do mantenedor. A Apache 2.0 é permissiva, inclui concessão explícita de patentes e já estava no repositório desde o commit inicial.
 Alternativas: MIT; adiar a escolha até G6 e remover o `LICENSE` até lá.
 Consequências: o README deixa de dizer que a licença será definida depois. O classificador `Private :: Do Not Upload` continua até G6. A publicação de modelos derivados do corpus não é autorizada por esta decisão; depende de G1.
 
-## 2026-11-01: Pipeline de dados do M1
+## 2026-11-04: Pipeline de dados do M1
 
 Decisão:
 
@@ -68,7 +68,7 @@ Alternativas: deixar o DuckDB inferir os tipos; pandas no lugar do DuckDB; coloc
 
 Consequências: se o formato real do CSV for diferente do esperado, o pipeline para com uma mensagem que aponta a coluna, e o ajuste é feito em `configs/data.yaml`.
 
-## 2026-11-01: Deduplicação e quase duplicatas
+## 2026-11-04: Deduplicação e quase duplicatas
 
 Decisão:
 
@@ -81,7 +81,7 @@ Alternativas: MinHash com LSH por amostragem, como o plano sugeria; remover tamb
 
 Consequências: paráfrases não são detectadas. Remover quase duplicatas fica para depois, se a medição mostrar que elas inflam as métricas.
 
-## 2026-11-01: Empresas ocultas e janelas dos splits
+## 2026-11-04: Empresas ocultas e janelas dos splits
 
 Decisão:
 
@@ -96,7 +96,7 @@ Alternativas: ordenar as empresas pelo hash e pegar exatamente 5%; incluir todas
 
 Consequências: a fração de empresas ocultas é aproximada. Uma empresa muito grande sorteada como oculta reduz bastante o volume de `train`. O manifesto registra quantas empresas e linhas ficaram ocultas.
 
-## 2026-11-01: Regras de urgência das diretrizes
+## 2026-11-10: Regras de urgência das diretrizes
 
 Decisão: o mantenedor aprovou três regras de `docs/annotation_guidelines.md`:
 
@@ -111,3 +111,24 @@ Motivo: telecomunicações estão na lista de serviços essenciais da Lei 7.783/
 Alternativas: só água, energia, gás e saúde como essenciais; na dúvida, escolher o nível mais alto; negativação sempre `alta`.
 
 Consequências: o gold set pode ter menos casos de `alta`. Se `gold_test` ficar com menos de 30, vale a regra do conjunto extra enriquecido (AGENTS.md, seção 7).
+
+## 2026-11-11: Rótulos do M2: gold set, silver e camada de LLM
+
+Decisão:
+
+- **Camada de LLM antecipada.** `BatchLLMClient`, `FakeLLM`, o cache em disco, o registro de custo (`data/logs/llm_calls.jsonl`) e `configs/pricing.yaml` entram no M2, e não no M3, porque os rótulos silver precisam deles. Por enquanto só existe a interface de lote. O M3 acrescenta chamadas individuais para medir latência.
+- **Cliente da Anthropic.** Message Batches API com structured outputs (`output_config.format`), `effort: low` e o prompt de sistema marcado para cache de prompt. Modelo: `LLM_MODEL_CHEAP` (Haiku 5.5). Preços conferidos na página oficial em 2026-11-11.
+- **Conjuntos silver.** `silver_val` exclui os itens de `gold_dev`. Os itens de `gold_dev` recebem rótulos do LLM à parte (`gold_dev_llm`), só para medir a concordância com o gold.
+- **Travas.** O cliente externo só roda com `ALLOW_EXTERNAL_LLM=true`, que deve ser ligado só depois de G1. Todo envio pago exige `CONFIRM_COST=1`. Acima do limite de aprovação, exige `APPROVED_USD` igual ou maior que a estimativa (G4). A estimativa somada ao que já foi gasto precisa caber em `LLM_BUDGET_USD`.
+- **Cache e custo separados por backend.** Respostas do `FakeLLM` nunca substituem respostas reais e custam zero no orçamento. Cada rótulo silver grava o backend que o produziu.
+- **Respostas inválidas** (JSON fora do schema, recusa, truncamento) são reenviadas uma vez. Se falharem de novo, ficam registradas com o motivo, sem rótulo.
+- **Estimativa de custo** por heurística: 3,5 caracteres por token e 200 tokens de saída por item, sem o desconto do cache de prompt, para errar para cima. O manifesto compara estimativa e custo real.
+- **Gold set.** O identificador do item é o `text_hash`. A fila é sorteada uma vez e não pode ser refeita depois do primeiro rótulo. Os 10% de reanotação são marcados na criação da fila. O gold é o rótulo da primeira rodada, e vale o último registro de cada rodada.
+- **Ferramenta de anotação** em Streamlit (`ui/annotate.py`), antecipada da demo do M3. Novo alvo `make gold-report` e nova configuração `configs/labeling.yaml`.
+
+Motivo: os rótulos silver são o primeiro gasto real do projeto e o primeiro envio de texto do corpus para fora. As travas tornam G1, G4 e o teto de custo verificáveis no código, e não só no processo. Excluir `gold_dev` de `silver_val` evita ajustar hiperparâmetros nos mesmos textos usados para avaliar.
+
+Alternativas: chamadas individuais em vez de lotes (o dobro do preço); estimar tokens com o endpoint `count_tokens` (exige enviar o texto, ou seja, G1); deixar `gold_dev` dentro de `silver_val`; uma planilha no lugar da ferramenta de anotação.
+
+Consequências: o M3 reaproveita a camada de LLM e precisa recusar rótulos com backend `fake` no treino. A estimativa pode errar, sobretudo nos tokens de raciocínio do Haiku 5.5. O primeiro lote real deve ser comparado com ela antes de qualquer lote maior.
+

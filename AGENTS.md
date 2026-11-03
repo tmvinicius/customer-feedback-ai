@@ -504,6 +504,7 @@ customer-feedback-ai/
 ├── .github/workflows/ci.yml
 ├── configs/
 │   ├── data.yaml
+│   ├── labeling.yaml
 │   ├── pricing.yaml
 │   ├── retrieval.yaml
 │   ├── splits.yaml
@@ -565,6 +566,7 @@ make sample          # gera dev_sample
 make splits          # gera splits e manifestos
 make taxonomy-sample # 200 reclamações de train para a leitura antes de G2
 make annotate        # abre a ferramenta de anotação
+make gold-report     # exporta o gold set e mede kappa e concordância silver
 make label-silver    # lote LLM, exige CONFIRM_COST=1
 make train-local     # B0, B1, C1, C2 e C3
 make eval-dev        # L2: avalia modelos e cascata em gold_dev, usa LLM real
