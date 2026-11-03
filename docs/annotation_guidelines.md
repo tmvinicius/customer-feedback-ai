@@ -1,6 +1,6 @@
 # Diretrizes de anotação
 
-Status: **rascunho, G2 parcial.** As regras de urgência foram aprovadas pelo mantenedor em 2026-11-10 (`docs/decisions.md`). A lista de temas em `configs/taxonomy.yaml` ainda pode mudar depois da leitura das 200 reclamações de `make taxonomy-sample`.
+Status: **rascunho, G2 parcial.** As regras de urgência foram aprovadas pelo mantenedor em 2026-11-04 (`docs/decisions.md`). A lista de temas em `configs/taxonomy.yaml` ainda pode mudar depois da leitura das 200 reclamações de `make taxonomy-sample`.
 
 Todos os exemplos deste documento são inventados. Nenhum vem do corpus.
 
@@ -103,7 +103,7 @@ Exemplos inventados:
 
 ## 7. Qualidade da anotação
 
-- **Reanotação:** 10% da amostra é anotada de novo pelo menos 7 dias depois, sem ver o primeiro rótulo. Reportamos o kappa de Cohen intra-anotador, separado para tema e urgência.
+- **Reanotação:** 10% da amostra é anotada de novo pelo menos 7 dias depois, sem ver o primeiro rótulo. Reportamos o kappa de Cohen intra-anotador, separado para tema e urgência. Esse kappa é o teto do critério de concordância do silver: não se exige do LLM uma concordância maior que a do próprio anotador consigo mesmo (`docs/decisions.md`, 2026-11-04).
 - **Classes raras:** se um tema tiver menos de 5 exemplos em `gold_dev`, a taxonomia é revisada antes de anotar `gold_test`, e a decisão vai para `docs/decisions.md`.
 - **Urgência alta rara:** se `gold_test` tiver menos de 30 casos de `alta`, criamos um conjunto extra por busca de palavras-chave, com anotação cega, reportado separadamente.
 - **Mudanças nas diretrizes** depois do início da anotação geram nova versão deste documento e da taxonomia, e os casos afetados são revistos.

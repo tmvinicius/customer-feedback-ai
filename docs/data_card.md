@@ -1,6 +1,6 @@
 # Data card: ConsumerBR no customer-feedback-ai
 
-Status: pipeline implementado e testado só com dados sintéticos. Os valores observados no corpus real estão `pendente` até G1 ser aprovado e `make data` rodar no ConsumerBR.
+Status: pipeline implementado e testado só com dados sintéticos. G1 foi decidida em 2026-11-04 e permite a pesquisa local. Os valores observados no corpus real estão `pendente` até o mantenedor rodar `make data` no ConsumerBR, na própria máquina.
 
 ## Fonte
 
@@ -12,15 +12,29 @@ Status: pipeline implementado e testado só com dados sintéticos. Os valores ob
 
 ## Licença e uso
 
-| Uso                                      | Situação                    |
-| ---------------------------------------- | --------------------------- |
-| Uso em portfólio público                 | pendente (G1)               |
-| Envio de texto a API externa             | pendente (G1)               |
-| Publicação de modelos derivados          | pendente (G1)               |
-| Exibição de casos reais na demo          | pendente (G1)               |
-| Redistribuição dos dados neste repositório | não permitida (regras 6 e 9) |
+Decisão G1 de 2026-11-04 (`docs/decisions.md`). Regra adotada: o que a licença não autoriza expressamente é tratado como não permitido.
 
-Segundo o artigo, o uso é restrito a pesquisa. O texto exato da licença precisa ser lido no Zenodo pelo mantenedor e registrado em `docs/decisions.md`.
+| Uso                                                        | Situação                                                            |
+| ---------------------------------------------------------- | ------------------------------------------------------------------- |
+| Pesquisa local: baixar, processar, treinar e avaliar        | permitida, só na máquina do mantenedor                              |
+| Treino ou processamento em ambiente externo (nuvem, GPU)   | não permitido                                                       |
+| Envio de texto a API externa (LLM e agente de código)      | não permitido                                                       |
+| Publicação de modelos derivados                            | não permitida                                                       |
+| Exibição de casos reais na demo e no vídeo                 | não permitida; a demo usa `CASES_INDEX=synthetic`                   |
+| Publicação pública do projeto                              | só código (Apache 2.0), métricas agregadas e fixtures sintéticas (G6) |
+| Redistribuição dos dados neste repositório                 | não permitida (regras 6 e 9)                                        |
+
+Texto considerado, colado pelo mantenedor a partir do registro no Zenodo:
+
+- direitos: "Atribuição Creative Commons 4.0 Internacional" e "Licença de dados somente para pesquisa – ConsumerBR";
+- campos textuais anonimizados com marcadores padronizados; textos brutos não são distribuídos;
+- tarefas previstas: classificação de reclamações e geração de respostas, entre outras;
+- "O uso é restrito a fins acadêmicos e de pesquisa";
+- compromisso de não tentar reidentificação, não redistribuir os dados para fins não relacionados à pesquisa e cumprir a LGPD.
+
+Limite: esse texto parece ser a descrição do registro, e os termos completos do arquivo de licença não foram lidos. A combinação da CC BY 4.0 com a licença de dados somente para pesquisa não está explicada. Os autores não serão consultados.
+
+O agente de código roda em nuvem, então nunca recebe texto do corpus: trabalha com dados sintéticos e vê só agregados, como contagens, métricas e mensagens de erro sem texto.
 
 ## Campos e uso permitido
 
@@ -133,6 +147,7 @@ O plano pedia uma estimativa por amostragem. O `loose_hash` mede o corpus inteir
 
 - O corpus já vem anonimizado, com tags como `[NOME]` e `[EMAIL]`. O pipeline mantém as tags e nunca tenta restaurá-las.
 - Nenhum dado do corpus, índice ou peso treinado entra no Git (`.gitignore` e `tests/unit/test_repository_hygiene.py`).
+- Nenhum texto do corpus vai para API externa. Os rótulos e a comparação com LLM usam um LLM de pesos abertos rodando na máquina do mantenedor (G1, 2026-11-04).
 - Logs e mensagens de erro do pipeline trazem contagens e nomes de colunas, nunca o texto das reclamações.
 - O perfil traz apenas agregados. A lista das 10 empresas com mais reclamações é o único campo com nomes, e são nomes de empresas.
 

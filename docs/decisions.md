@@ -17,10 +17,10 @@ Consequências:
 
 | ID  | Quando                                | Status   | Data | Registro |
 | --- | ------------------------------------- | -------- | ---- | -------- |
-| G1  | Antes de baixar ou processar o corpus | pendente | -    | -        |
-| G2  | Fim do M1                             | parcial: regras de urgência aprovadas, temas pendentes | 2026-11-10 | 2026-11-10: Regras de urgência das diretrizes |
+| G1  | Antes de baixar ou processar o corpus | aprovado com restrições: pesquisa local permitida; API externa, modelos derivados e casos reais não permitidos; publicação pública limitada a código, métricas agregadas e fixtures sintéticas (G6) | 2026-11-04 | 2026-11-04: G1, licença do ConsumerBR |
+| G2  | Fim do M1                             | parcial: regras de urgência aprovadas, temas pendentes | 2026-11-04 | 2026-11-04: Regras de urgência das diretrizes |
 | G3  | Durante o M2                          | pendente | -    | -        |
-| G4  | Antes de job LLM acima do limite      | pendente | -    | -        |
+| G4  | Antes de job LLM acima do limite      | sem uso enquanto a API externa não for liberada para texto do corpus | 2026-11-04 | 2026-11-04: Plano B da G1 |
 | G5  | Antes de avaliar em `test`            | pendente | -    | -        |
 | G6  | M6                                    | parcial: licença do código decidida, publicação pendente | 2026-11-04 | 2026-11-04: Licença do código |
 
@@ -96,7 +96,7 @@ Alternativas: ordenar as empresas pelo hash e pegar exatamente 5%; incluir todas
 
 Consequências: a fração de empresas ocultas é aproximada. Uma empresa muito grande sorteada como oculta reduz bastante o volume de `train`. O manifesto registra quantas empresas e linhas ficaram ocultas.
 
-## 2026-11-10: Regras de urgência das diretrizes
+## 2026-11-04: Regras de urgência das diretrizes
 
 Decisão: o mantenedor aprovou três regras de `docs/annotation_guidelines.md`:
 
@@ -112,12 +112,14 @@ Alternativas: só água, energia, gás e saúde como essenciais; na dúvida, esc
 
 Consequências: o gold set pode ter menos casos de `alta`. Se `gold_test` ficar com menos de 30, vale a regra do conjunto extra enriquecido (AGENTS.md, seção 7).
 
-## 2026-11-11: Rótulos do M2: gold set, silver e camada de LLM
+## 2026-11-04: Rótulos do M2: gold set, silver e camada de LLM
+
+> Revisada pelas decisões de 2026-11-04 sobre a G1 e o Plano B, registradas abaixo: o texto do corpus não vai para a API da Anthropic, e os rótulos silver passam a ser gerados por um LLM local. O restante desta entrada continua valendo.
 
 Decisão:
 
 - **Camada de LLM antecipada.** `BatchLLMClient`, `FakeLLM`, o cache em disco, o registro de custo (`data/logs/llm_calls.jsonl`) e `configs/pricing.yaml` entram no M2, e não no M3, porque os rótulos silver precisam deles. Por enquanto só existe a interface de lote. O M3 acrescenta chamadas individuais para medir latência.
-- **Cliente da Anthropic.** Message Batches API com structured outputs (`output_config.format`), `effort: low` e o prompt de sistema marcado para cache de prompt. Modelo: `LLM_MODEL_CHEAP` (Haiku 5.5). Preços conferidos na página oficial em 2026-11-11.
+- **Cliente da Anthropic.** Message Batches API com structured outputs (`output_config.format`), `effort: low` e o prompt de sistema marcado para cache de prompt. Modelo: `LLM_MODEL_CHEAP` (Haiku 5.5). Preços conferidos na página oficial, com a data registrada em `configs/pricing.yaml`.
 - **Conjuntos silver.** `silver_val` exclui os itens de `gold_dev`. Os itens de `gold_dev` recebem rótulos do LLM à parte (`gold_dev_llm`), só para medir a concordância com o gold.
 - **Travas.** O cliente externo só roda com `ALLOW_EXTERNAL_LLM=true`, que deve ser ligado só depois de G1. Todo envio pago exige `CONFIRM_COST=1`. Acima do limite de aprovação, exige `APPROVED_USD` igual ou maior que a estimativa (G4). A estimativa somada ao que já foi gasto precisa caber em `LLM_BUDGET_USD`.
 - **Cache e custo separados por backend.** Respostas do `FakeLLM` nunca substituem respostas reais e custam zero no orçamento. Cada rótulo silver grava o backend que o produziu.
@@ -131,4 +133,127 @@ Motivo: os rótulos silver são o primeiro gasto real do projeto e o primeiro en
 Alternativas: chamadas individuais em vez de lotes (o dobro do preço); estimar tokens com o endpoint `count_tokens` (exige enviar o texto, ou seja, G1); deixar `gold_dev` dentro de `silver_val`; uma planilha no lugar da ferramenta de anotação.
 
 Consequências: o M3 reaproveita a camada de LLM e precisa recusar rótulos com backend `fake` no treino. A estimativa pode errar, sobretudo nos tokens de raciocínio do Haiku 5.5. O primeiro lote real deve ser comparado com ela antes de qualquer lote maior.
+
+## 2026-11-04: G1, licença do ConsumerBR
+
+Decisão:
+
+- Regra adotada: o que a licença não autoriza expressamente é tratado como não permitido.
+- Pesquisa local (baixar, processar, treinar e avaliar na máquina do mantenedor): permitida. O texto restringe o uso a pesquisa e cita classificação de reclamações e geração de respostas.
+- Envio de texto do corpus a API externa (LLM e agente de código): não permitido.
+- Publicação de modelos derivados do corpus: não permitida.
+- Exibição de casos reais na demo e no vídeo: não permitida. A demo usa `CASES_INDEX=synthetic`.
+- Leitura adotada: a pesquisa local está coberta pelo texto. O que fica restrito é a publicação pública.
+- Publicação pública: só código (Apache 2.0), métricas agregadas e fixtures sintéticas. Nunca dados, textos do corpus, índices nem pesos treinados. A aprovação da publicação do repositório continua em G6.
+- Onde o corpus fica: o corpus real, os dados derivados e qualquer saída com texto ficam só na máquina do mantenedor. Treino em ambiente externo, como GPU na nuvem, também está fora. O agente de código roda em nuvem: trabalha só com dados sintéticos e vê apenas saídas agregadas (contagens, métricas, erros sem texto). A leitura das 200 reclamações para fechar a taxonomia (G2) é só do mantenedor.
+- O Claude pode ser usado com texto que não vem do corpus: entrada sintética digitada na demo e o conjunto `redteam`, que é sintético. Isso não fere a regra 10.
+- Os autores não serão consultados. A decisão se apoia apenas no texto disponível no Zenodo.
+- A decisão é reversível. Se o texto completo da licença permitir o envio a API externa, o cliente da Anthropic já existe e é ativado com `ALLOW_EXTERNAL_LLM=true`.
+
+Texto considerado, colado pelo mantenedor a partir do registro no Zenodo (`10.5281/zenodo.18022568`): direitos "Atribuição Creative Commons 4.0 Internacional" e "Licença de dados somente para pesquisa – ConsumerBR"; campos textuais anonimizados com marcadores padronizados e sem distribuição de textos brutos; tarefas previstas de classificação de reclamações e geração de respostas, entre outras; "O uso é restrito a fins acadêmicos e de pesquisa"; compromisso de não tentar reidentificação, não redistribuir os dados para fins não relacionados à pesquisa e cumprir a LGPD.
+
+Motivo: o texto da licença não aborda API externa, modelos derivados nem exibição de casos. A restrição a "fins de pesquisa", a vedação de redistribuir fora da pesquisa e a LGPD tornam arriscado presumir permissão. Já a pesquisa local está expressamente prevista, com classificação de reclamações e geração de respostas entre as tarefas citadas.
+
+Limite: o texto considerado parece ser a descrição do registro, e os termos completos do arquivo de licença não foram lidos. A CC BY 4.0 (permissiva) e a licença de dados somente para pesquisa (restritiva) parecem conflitar, e o texto não diz como se combinam. Seguem a regra "não permitido": envio de trechos anonimizados a API de terceiros, publicação de modelos treinados com o corpus, exibição de exemplos em demonstração ou vídeo. Ao ler os termos completos, o mantenedor pode revisar esta decisão aqui.
+
+Alternativas: tratar a ausência de menção como permissão; ler o texto ao pé da letra e parar o projeto; consultar os autores; trocar a fonte de dados.
+
+Consequências: o Claude sai de tudo que recebe texto do corpus (rótulos silver, C4 e C5, etapa de LLM da cascata, rascunhos com casos reais). A seção 20 do `AGENTS.md` foi aplicada na entrada seguinte.
+
+## 2026-11-04: Plano B da G1: LLM de pesos abertos rodando localmente
+
+Decisão: entre as opções da seção 20 do `AGENTS.md`, o projeto segue a opção A, LLM de pesos abertos rodando na máquina do mantenedor.
+
+- **Cliente local atrás do `BatchLLMClient`**, como mais um backend com `is_external = False`. O cliente da Anthropic continua no código, bloqueado por `ALLOW_EXTERNAL_LLM=false`.
+- **Modelos:** quatro candidatos de pesos abertos, escolhidos por triagem em `gold_dev` (entrada "Triagem dos LLMs locais para C4 e C5"). O ambiente de execução (por exemplo, Ollama, llama.cpp ou Transformers) vai para esta página quando for decidido. Gemini fica fora.
+- **C4 e C5 passam a ser dois tamanhos de LLM local**, um menor e um maior, e respondem às mesmas perguntas: "quanto o LLM ganha sem treino?" e "mais computação melhora o resultado?".
+- **Custo vira tempo de máquina e memória.** "Custo por 1.000 reclamações" passa a ser tempo de máquina e memória por 1.000, na mesma máquina. O ponto de equilíbrio é calculado em tempo de máquina, ou convertido em US$ com um hardware de referência declarado como premissa. Preços de API não se aplicam a texto do corpus, e `configs/pricing.yaml` fica sem uso com ele.
+- **Rótulos silver pelo LLM local**, começando com um volume menor que o plano (2 mil a 5 mil), porque o tempo de geração local precisa ser medido antes de escalar. As curvas de aprendizado de 1.000, 5.000 e 20.000 rótulos continuam no plano, condicionadas a esse tempo.
+- **O gold humano ganha peso.** A concordância entre os rótulos do LLM e `gold_dev` passa a ser critério de aceite do M2, e não só um relatório (entrada "Critério de concordância do silver com o `gold_dev`").
+- **Cascata e rascunhos** usam o LLM local. A economia da cascata é medida em tempo e memória. Modelos menores escrevem pior em português, então validadores e abstenção pesam mais nos rascunhos.
+- **Teto de US$ 30 e G4** só se aplicam se a API for liberada para texto do corpus.
+
+Motivo: mantém o centro do projeto (comparar ML clássico, deep learning e LLM) sem enviar texto do corpus a terceiros. Com todos os modelos na mesma máquina, a medição de latência fica mais justa.
+
+Alternativas: usar apenas rótulos humanos, em menor escala; trocar a fonte por uma base compatível com o uso.
+
+Consequências:
+
+- Exige uma máquina capaz de rodar um modelo de 7 a 8 bilhões de parâmetros, em geral com GPU ou com muita memória e quantização. O tempo de geração em CPU precisa ser medido, não presumido.
+- Modelos locais precisam de geração restrita por schema ou de validação com retry. O reenvio de respostas inválidas do M2 continua útil.
+- O prompt `classify/v1` foi escrito para o Claude e será ajustado em `gold_dev`, com nova versão registrada.
+- Um LLM local pode ficar abaixo do Claude. Isso é um resultado válido e será reportado como tal, com a ressalva de que LLMs de API não foram avaliados com texto do corpus.
+- O código do M2 (camada de LLM, `FakeLLM`, cache por backend, travas) continua correto. Falta o cliente local, a medição de tempo e memória no registro de chamadas e a troca da estimativa de custo pela estimativa de tempo nos jobs com texto do corpus.
+
+## 2026-11-04: Triagem dos LLMs locais para C4 e C5
+
+Decisão:
+
+- C4 e C5 são um modelo cada. Quatro modelos de pesos abertos entram como candidatos de triagem, e no fim sobram dois: um para C4 e um para C5.
+
+| Vaga           | Concorrentes                 | Quem decide                                                   |
+| -------------- | ---------------------------- | ------------------------------------------------------------- |
+| C4 (LLM menor) | Gemma 4 E4B × Qwen 3.5 4B    | Macro-F1 de tema no `gold_dev`, desempatando por velocidade   |
+| C5 (LLM maior) | Qwen 3.5 9B × Llama 3.1 8B   | Macro-F1 de tema no `gold_dev` e viabilidade em 6 GB          |
+
+- A triagem roda os quatro candidatos com o mesmo prompt, a mesma decodificação e a mesma máquina, sobre os 150 itens do `gold_dev`.
+- **C4:** vence o maior macro-F1 de tema. Há empate quando o intervalo de 95% do bootstrap pareado (1.000 reamostragens) para a diferença de macro-F1 contém zero. No empate, vence o mais rápido, pela latência p50 por reclamação.
+- **C5:** primeiro sai quem não roda em 6 GB, com a quantização escolhida e sem estourar a memória durante a triagem. Entre os que rodam, vence o maior macro-F1 de tema. Se nenhum rodar, C5 é cortado, como prevê a ordem de corte da seção 17 do `AGENTS.md`.
+- O vencedor de C4 também gera os rótulos silver e `gold_dev_llm`, e é ele que passa pelo critério de concordância da entrada seguinte.
+- A triagem registra, por candidato: macro-F1 de tema e de urgência com intervalos, recall de urgência alta, taxa de saídas válidas no schema, latência p50 e p95, vazão em lote, pico de memória e a quantização usada.
+- O ambiente de execução (por exemplo, Ollama, llama.cpp ou Transformers) e a quantização ainda serão decididos, antes da triagem.
+
+Motivo: dois tamanhos respondem às perguntas de C4 ("quanto o LLM ganha sem treino?") e de C5 ("mais computação melhora o resultado?"). Concorrentes de famílias diferentes em cada vaga evitam escolher por marca. O desempate de C4 por velocidade importa porque é o modelo que rotula o silver e alimenta a cascata. O limite de 6 GB vem do hardware disponível.
+
+Alternativas: fixar um modelo por vaga sem triagem; triar todos os quatro para as duas vagas; decidir por acurácia em vez de macro-F1.
+
+Consequências:
+
+- A triagem depende do `gold_dev` anotado (G3) e do cliente do LLM local.
+- O `gold_dev` é usado para ajustar o prompt, triar os modelos e medir a concordância do silver. As medidas nele são otimistas. A avaliação sem esse viés só acontece no `gold_test`, no M6.
+- Os nomes e as versões exatas dos modelos (incluindo a quantização) entram nos manifestos e no MLflow de cada execução.
+
+## 2026-11-04: Critério de concordância do silver com o `gold_dev` (aceite do M2)
+
+Decisão:
+
+- O M2 só é aceito se a concordância entre os rótulos silver e o `gold_dev` atingir o critério abaixo. O critério foi fixado antes de qualquer medição e não muda depois de ver os resultados. Qualquer mudança exige nova entrada neste arquivo.
+- A concordância é medida entre os rótulos do LLM local escolhido para rotular o silver (`gold_dev_llm`) e os rótulos humanos de `gold_dev`.
+
+| Métrica (silver × `gold_dev`)                                             | Aceite  | Alerta           | Reprova     |
+| ------------------------------------------------------------------------- | ------- | ---------------- | ----------- |
+| Kappa de tema (Cohen)                                                     | >= 0,60 | 0,50 a 0,59      | < 0,50      |
+| Kappa de urgência (ponderado, pesos lineares, ordem baixa < media < alta) | >= 0,50 | 0,40 a 0,49      | < 0,40      |
+| Recall de urgência alta (gold como referência)                            | só reportado | alerta se < 0,80 | não reprova |
+
+- Decide o valor pontual. O intervalo de confiança de 95% (bootstrap de 1.000 reamostragens) é sempre reportado junto, com o número de casos por classe. O recall de urgência alta é reportado sempre com o seu número de casos.
+- O critério vale para o agregado. A concordância por classe é só relatório, porque classes com menos de 5 exemplos são instáveis.
+- Cada métrica cai na faixa correspondente. Vale a pior faixa entre tema e urgência.
+- Ações por faixa:
+  - Aceite: seguir para o silver em volume.
+  - Alerta: seguir, registrar a limitação neste arquivo e explicar o viés no README e no relatório final (AGENTS.md, seção 7).
+  - Reprova: nesta ordem, melhorar o prompt usando só o `gold_dev`; trocar o modelo de C4 entre os dois candidatos da triagem; reduzir a dependência do silver, treinando com menos silver e mais gold.
+- O critério se aplica ao modelo escolhido na triagem de C4 (Gemma 4 E4B ou Qwen 3.5 4B).
+
+Motivo: o silver treina os modelos locais, então rótulos ruidosos contaminam C1, C2 e C3. O kappa desconta a concordância por acaso, o que a acurácia não faz com 12 temas desbalanceados. A urgência é ordinal e tem mais zonas cinzentas, por isso o piso é menor. O recall de urgência alta só alerta, porque o `gold_dev` (150 itens) deve ter poucos casos e o intervalo de confiança será largo. Os valores são julgamento do mantenedor, apoiado em convenções (kappa de 0,6 a 0,8 costuma ser lido como concordância substancial), e não vêm de medição.
+
+Alternativas: acurácia como métrica; critério mais rígido (kappa de tema >= 0,65); recall de urgência alta como condição de reprovação; critério definido depois de ver os resultados; pesos quadráticos no kappa de urgência, em vez de lineares.
+
+Consequências:
+
+- A medida é otimista, porque o prompt é ajustado no `gold_dev` e a concordância é medida nos mesmos itens. A concordância sem esse viés só aparece no `gold_test`, no M6. Isso fica registrado como limitação.
+- Antes de fechar o critério, conferir o kappa da reanotação humana (10%, depois de 7 dias). A concordância do silver não deve ser exigida acima desse teto.
+- Rótulos de LLM local menor tendem a ser mais ruidosos. A reprovação é um resultado possível e deve ser reportada como tal.
+- O critério substitui, no aceite do M2, a frase "concordância silver contra `gold_dev` medida" (AGENTS.md, seção 17).
+- Implementação: o `make gold-report` calcula hoje o kappa de Cohen simples (`labeling/agreement.py`). Faltam o kappa ponderado de urgência, o intervalo de confiança por bootstrap, o recall de urgência alta com o número de casos e a classificação em faixas.
+
+## 2026-11-04: Treino e processamento só na máquina do mantenedor
+
+Decisão: confirmada a regra da G1 de que treino e processamento com o corpus não podem usar ambiente externo, como GPU na nuvem. Isso inclui o treino de C3 (BERTimbau), que o plano antes permitia fora da máquina do mantenedor.
+
+Motivo: a regra adotada na G1 trata como não permitido o que a licença não autoriza expressamente, e enviar o corpus a um serviço externo de computação não está autorizado.
+
+Alternativas: treinar C3 em GPU na nuvem com dados anonimizados.
+
+Consequências: C3 e os LLMs locais ficam limitados ao hardware do mantenedor. Se o treino de C3 ficar inviável, ele pode ser feito com menos dados ou menos épocas, e a limitação é reportada.
 
