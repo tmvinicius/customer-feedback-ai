@@ -257,3 +257,33 @@ Alternativas: treinar C3 em GPU na nuvem com dados anonimizados.
 
 Consequências: C3 e os LLMs locais ficam limitados ao hardware do mantenedor. Se o treino de C3 ficar inviável, ele pode ser feito com menos dados ou menos épocas, e a limitação é reportada.
 
+## 2026-11-04: Hardware da máquina do mantenedor
+
+Decisão: a máquina do mantenedor, onde rodam o corpus, a triagem, os LLMs locais e os treinos, tem **6 GB de VRAM** e **32 GB de RAM**. O limite de 6 GB da triagem de C5 é de VRAM.
+
+Motivo: o tamanho de modelo, a quantização e o ambiente de execução dependem desses números, e a triagem de C5 precisa de um critério verificável.
+
+Alternativas: medir só na hora da triagem, sem registrar o hardware.
+
+Consequências:
+
+- Todas as medições de tempo, memória e latência são feitas nessa máquina e o relatório declara a configuração.
+- Com 32 GB de RAM, um modelo que não cabe na VRAM ainda pode rodar com parte das camadas na CPU, mais devagar. Falta confirmar se "viabilidade em 6 GB" exige o modelo inteiro na VRAM (proposta do agente) ou aceita esse modo misto.
+- Os candidatos de C4 (cerca de 4 bilhões de parâmetros) devem caber na VRAM com quantização de 4 bits. Os de C5 (8 a 9 bilhões) ficam no limite, e a triagem decide.
+
+## 2026-11-04: Convenções das métricas de avaliação (M3)
+
+Decisão:
+
+- O macro-F1 é a média simples do F1 de cada rótulo presente no gold ou nas previsões, como no padrão do scikit-learn. Um rótulo só previsto, nunca verdadeiro, entra com F1 zero.
+- Os intervalos de 95% usam bootstrap por percentis, com 1.000 reamostragens e seed fixa. Comparações entre dois modelos usam as mesmas reamostragens para os dois (bootstrap pareado).
+- Reamostragens em que a métrica fica indefinida (por exemplo, um kappa com uma só categoria) são descartadas e contadas no resultado.
+- O kappa ponderado de urgência usa pesos de discordância lineares, |i - j| / (k - 1), na ordem baixa < media < alta. O kappa da reanotação humana é calculado do mesmo jeito, para servir de teto ao critério do silver.
+- As métricas ficam em `src/customer_feedback_ai/evaluation/`, sem dependência nova. Foram conferidas contra o scikit-learn em 300 casos aleatórios, com diferença máxima de 3e-16.
+
+Motivo: as métricas decidem a triagem, o aceite do M2 e a comparação de modelos, então a definição precisa estar escrita antes de qualquer resultado.
+
+Alternativas: macro-F1 sobre todos os temas da taxonomia, inclusive os ausentes; intervalos por aproximação normal; usar o scikit-learn desde já.
+
+Consequências: com poucos exemplos por tema no `gold_dev`, o macro-F1 oscila bastante, e os intervalos serão largos. Isso é reportado, não escondido.
+
