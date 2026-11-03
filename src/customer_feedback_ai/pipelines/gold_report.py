@@ -1,7 +1,7 @@
 """`make gold-report`: export the gold sets and report coverage, kappa and alerts.
 
-When the silver job has labeled the `gold_dev` items, the report also measures
-the agreement between the LLM and the human labels (AGENTS.md, section 7).
+When the silver job has labeled the `gold_dev` items, the report also applies the
+silver agreement criterion, the M2 acceptance rule (docs/decisions.md, 2026-11-04).
 """
 
 import argparse
@@ -15,7 +15,10 @@ from customer_feedback_ai.data import sql
 from customer_feedback_ai.data.duck import connect
 from customer_feedback_ai.data.manifest import build_manifest, file_record, write_manifest
 from customer_feedback_ai.data.paths import DataPaths
-from customer_feedback_ai.labeling.agreement import agreement
+from customer_feedback_ai.evaluation.criteria import (
+    evaluate_silver_agreement,
+    human_ceiling_notes,
+)
 from customer_feedback_ai.labeling.config import (
     LABELING_CONFIG_PATH,
     LabelingConfig,
@@ -40,22 +43,69 @@ from customer_feedback_ai.pipelines._common import (
 )
 
 
-def silver_vs_gold(con: duckdb.DuckDBPyConnection, gold_dev: Path, silver: Path) -> dict[str, Any]:
-    backends = con.execute(
-        f"SELECT DISTINCT backend FROM read_parquet({sql.literal(silver)}) ORDER BY 1"
-    ).fetchall()
+def silver_vs_gold(
+    con: duckdb.DuckDBPyConnection,
+    gold_dev: Path,
+    silver: Path,
+    config: LabelingConfig,
+    reannotation: dict[str, Any],
+) -> dict[str, Any]:
+    """Apply the silver agreement criterion (M2 acceptance) to `gold_dev_llm`."""
+    backends = [
+        str(row[0])
+        for row in con.execute(
+            f"SELECT DISTINCT backend FROM read_parquet({sql.literal(silver)}) ORDER BY 1"
+        ).fetchall()
+    ]
     rows = con.execute(
-        f"SELECT g.topic, s.topic, g.urgency, s.urgency "
+        "SELECT g.topic, s.topic, g.urgency, s.urgency "
         f"FROM read_parquet({sql.literal(gold_dev)}) AS g "
         f"JOIN read_parquet({sql.literal(silver)}) AS s USING (item_id) "
         "WHERE s.label_status = 'valid' ORDER BY item_id"
     ).fetchall()
-    # Labels from the offline FakeLLM measure nothing; the backend says which ran.
-    result: dict[str, Any] = {"backends": [str(b[0]) for b in backends]}
-    for name, first, second in (("topic", 0, 1), ("urgency", 2, 3)):
-        stats = agreement([str(r[first]) for r in rows], [str(r[second]) for r in rows])
-        result[name] = {"n": stats.n, "observed": stats.observed, "kappa": stats.kappa}
+    missing = int(
+        _scalar(
+            con,
+            f"SELECT count(*) FROM read_parquet({sql.literal(gold_dev)}) AS g "
+            f"ANTI JOIN (SELECT item_id FROM read_parquet({sql.literal(silver)}) "
+            "WHERE label_status = 'valid') AS s USING (item_id)",
+        )
+    )
+    criterion = config.silver_criterion
+    result = evaluate_silver_agreement(
+        [str(r[0]) for r in rows],
+        [str(r[1]) for r in rows],
+        [str(r[2]) for r in rows],
+        [str(r[3]) for r in rows],
+        criterion,
+    )
+    notes = human_ceiling_notes(
+        result,
+        reannotation.get("topic", {}).get("kappa"),
+        reannotation.get("urgency_weighted_kappa"),
+        criterion,
+    )
+    if missing:
+        notes.append(f"{missing} gold_dev items have no valid LLM label and are left out")
+    # Labels from the offline FakeLLM measure nothing and can never accept the M2.
+    offline = [b for b in backends if b == "fake"]
+    if offline:
+        notes.append("labels come from the offline FakeLLM; the result is not valid for M2")
+    result.update(
+        {
+            "backends": backends,
+            "gold_dev_items_without_llm_label": missing,
+            "valid_for_acceptance": not offline,
+            "notes": notes,
+        }
+    )
     return result
+
+
+def _scalar(con: duckdb.DuckDBPyConnection, query: str) -> Any:
+    row = con.execute(query).fetchone()
+    assert row is not None
+    return row[0]
 
 
 def run(paths: DataPaths, config: LabelingConfig, taxonomy: Taxonomy) -> dict[str, Any]:
@@ -70,7 +120,16 @@ def run(paths: DataPaths, config: LabelingConfig, taxonomy: Taxonomy) -> dict[st
     report["generated_on"] = date.today().isoformat()
     silver = paths.silver_labels_dir / f"{GOLD_DEV_LLM}.parquet"
     if silver.exists():
-        report["silver_vs_gold_dev"] = silver_vs_gold(con, outputs[GOLD_DEV], silver)
+        report["silver_vs_gold_dev"] = silver_vs_gold(
+            con, outputs[GOLD_DEV], silver, config, report["sets"][GOLD_DEV]["reannotation"]
+        )
+        comparison = report["silver_vs_gold_dev"]
+        LOGGER.info(
+            "silver vs gold_dev: band %s (topic kappa %s, urgency weighted kappa %s)",
+            comparison["band"],
+            comparison["topic_kappa"]["value"],
+            comparison["urgency_weighted_kappa"]["value"],
+        )
     write_json(report, paths.gold_report)
 
     labels = paths.annotation_labels

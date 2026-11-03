@@ -297,8 +297,14 @@ def test_report_measures_llm_against_gold_dev(
 
     comparison = report["silver_vs_gold_dev"]
     assert comparison["backends"] == ["fake"]
-    assert comparison["topic"]["n"] == 40
-    assert comparison["urgency"]["n"] == 40
+    assert comparison["n"] == 40
+    assert comparison["band"] in {"accept", "alert", "reject", "undefined"}
+    assert comparison["topic_kappa"]["resamples"] == 1_000
+    assert comparison["urgency_weighted_kappa"]["weights"] == "linear"
+    assert "support" in comparison["high_urgency_recall"]
+    # Offline labels can never accept the M2.
+    assert comparison["valid_for_acceptance"] is False
+    assert any("FakeLLM" in note for note in comparison["notes"])
 
 
 def test_request_carries_prompt_schema_and_cache_flag(

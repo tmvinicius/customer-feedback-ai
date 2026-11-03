@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from customer_feedback_ai.config import CONFIGS_DIR, load_yaml_model
+from customer_feedback_ai.evaluation.criteria import SilverCriterion
 from customer_feedback_ai.llm.types import Effort
 
 LABELING_CONFIG_PATH = CONFIGS_DIR / "labeling.yaml"
@@ -43,6 +44,7 @@ class SilverConfig(_Frozen):
 class LabelingConfig(_Frozen):
     gold: GoldConfig
     silver: SilverConfig
+    silver_criterion: SilverCriterion = SilverCriterion()
 
 
 def load_labeling_config(path: Path = LABELING_CONFIG_PATH) -> LabelingConfig:

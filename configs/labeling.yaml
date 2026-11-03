@@ -36,3 +36,20 @@ silver:
   # A estimativa é comparada com o custo real no manifesto.
   chars_per_token: 3.5
   expected_output_tokens: 200
+
+silver_criterion:
+  # Aceite do M2 (docs/decisions.md, 2026-11-04). Fixado antes de qualquer medição:
+  # mudar estes valores exige uma nova entrada em docs/decisions.md.
+  # Concordância entre gold_dev_llm (vencedor de C4) e os rótulos humanos de gold_dev.
+  topic_kappa:
+    accept: 0.60
+    alert: 0.50
+  urgency_weighted_kappa:
+    accept: 0.50
+    alert: 0.40
+  # Ordem baixa < media < alta.
+  urgency_weights: linear
+  # Só alerta, nunca reprova.
+  high_urgency_recall_alert: 0.80
+  bootstrap_resamples: 1000
+  seed: 20261104

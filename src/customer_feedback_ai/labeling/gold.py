@@ -24,9 +24,10 @@ from customer_feedback_ai.data import sql
 from customer_feedback_ai.data.schema import TEXT_COLUMN, TEXT_HASH_COLUMN
 from customer_feedback_ai.data.splits import TEST, TEST_UNSEEN_COMPANY, VAL
 from customer_feedback_ai.errors import DataPipelineError
+from customer_feedback_ai.evaluation.metrics import weighted_kappa
 from customer_feedback_ai.labeling.agreement import Agreement, agreement
 from customer_feedback_ai.labeling.config import GoldConfig
-from customer_feedback_ai.labeling.taxonomy import Taxonomy
+from customer_feedback_ai.labeling.taxonomy import URGENCY_LEVELS, Taxonomy
 
 GOLD_DEV, GOLD_TEST = "gold_dev", "gold_test"
 GOLD_SETS: tuple[str, ...] = (GOLD_DEV, GOLD_TEST)
@@ -288,6 +289,13 @@ def gold_report(
                 ),
                 "urgency": _agreement_dict(
                     agreement([a.urgency for a, _ in pairs], [b.urgency for _, b in pairs])
+                ),
+                # Same weighting as the silver criterion, so it can serve as its ceiling.
+                "urgency_weighted_kappa": weighted_kappa(
+                    [a.urgency for a, _ in pairs],
+                    [b.urgency for _, b in pairs],
+                    URGENCY_LEVELS,
+                    "linear",
                 ),
             },
         }
