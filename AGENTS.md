@@ -32,7 +32,7 @@ Este é um projeto de portfólio, ele não será colocado em produção.
 Dada uma reclamação em português brasileiro, o sistema:
 
 - classifica tema e urgência;
-- compara TF-IDF, BERT em português e LLM em qualidade, custo e latência;
+- compara TF-IDF, BERT em português e LLM de pesos abertos rodando localmente em qualidade, tempo de máquina, memória e latência;
 - usa uma cascata para chamar o LLM apenas nos casos em que ele compensa;
 - sugere uma resposta com base em casos parecidos, para revisão humana;
 - ou se abstém, quando não houver evidência suficiente.
@@ -67,11 +67,11 @@ Pare e peça decisão do mantenedor nestes pontos:
 | G1  | Antes de baixar ou processar o corpus | Ler a licença no Zenodo e confirmar: uso em portfólio público, envio de texto a API externa (LLM e agente de código), publicação de modelos derivados e exibição de casos na demo |
 | G2  | Fim do M1                             | Aprovar taxonomia e diretrizes de anotação                                                                                                                                        |
 | G3  | Durante o M2                          | Anotar o gold set. Esse trabalho é humano                                                                                                                                         |
-| G4  | Antes de job LLM acima do limite      | Aprovar a estimativa de custo                                                                                                                                                     |
+| G4  | Antes de job LLM acima do limite      | Aprovar a estimativa de custo. Só se aplica se a API externa for liberada para texto do corpus                                                                                    |
 | G5  | Antes de avaliar em `test`            | Confirmar os candidatos congelados                                                                                                                                                |
 | G6  | M6                                    | Aprovar publicação do repositório. A licença do código já foi decidida: Apache 2.0 (`docs/decisions.md`)                                                                          |
 
-Enquanto G1 não for aprovado, use apenas fixtures sintéticas. Se a licença impedir parte do plano, aplique a seção 20.
+G1 foi decidida em 2026-11-04 (`docs/decisions.md`): a pesquisa local é permitida, mas o texto do corpus não vai para API externa, modelos derivados não são publicados e casos reais não aparecem na demo. A seção 20 foi aplicada com a opção A, LLM de pesos abertos rodando localmente. O corpus real fica só na máquina do mantenedor. O agente de código, que roda em nuvem, usa apenas fixtures sintéticas e vê só saídas agregadas.
 
 ## 5. Escopo
 
@@ -110,7 +110,7 @@ Esses temas ficam para os projetos do mantenedor voltados para produção. Só a
 
 - Artigo: Duarte et al., PROPOR 2026, pp. 667-675.
 - Dataset: Zenodo, DOI `10.5281/zenodo.18022568`.
-- Licença: segundo o artigo, uso restrito a pesquisa. Confirme o texto exato em G1.
+- Licença: CC BY 4.0 e licença de dados somente para pesquisa, segundo o registro no Zenodo. A leitura adotada está na decisão G1 de 2026-11-04.
 - Formato esperado: um CSV de cerca de 5,2 GiB.
 
 **Não use os dados abertos oficiais do Consumidor.gov.br como fonte de texto.** Eles trazem metadados, mas não o conteúdo das reclamações. O corpus também não deve ser unido à base oficial, porque isso criaria risco de reidentificação.
@@ -212,7 +212,7 @@ credito_negativacao
 outro
 ```
 
-Antes de G2, o mantenedor lê uma amostra de 200 reclamações e ajusta a lista. O agente só participa dessa leitura se G1 permitir. Reclamações com vários assuntos recebem o tema do pedido principal.
+Antes de G2, o mantenedor lê uma amostra de 200 reclamações e ajusta a lista. A G1 não permite enviar o corpus ao agente, então essa leitura é só do mantenedor. Reclamações com vários assuntos recebem o tema do pedido principal.
 
 Urgência alta inclui risco à saúde, fraude em andamento, interrupção de serviço essencial, prazo crítico ou vulnerabilidade relatada. As diretrizes completas ficam em `docs/annotation_guidelines.md`.
 
@@ -222,8 +222,8 @@ Urgência alta inclui risco à saúde, fraude em andamento, interrupção de ser
 | -------------- | --------------- | ----------------------------------------------------------- | ---------------------------------------- |
 | `gold_dev`     | 150             | Humano, janela `val`                                        | Ajustar prompts, calibração e thresholds |
 | `gold_test`    | 350             | Humano, janela `test`, com cerca de 25% de empresas ocultas | Avaliação final, congelado               |
-| `silver_train` | até 20.000      | LLM em lote, janela `train`                                 | Treinar modelos locais                   |
-| `silver_val`   | 2.000           | LLM em lote, janela `val`                                   | Hiperparâmetros e early stopping         |
+| `silver_train` | até 20.000      | LLM local em lote, janela `train`                           | Treinar modelos locais                   |
+| `silver_val`   | 2.000           | LLM local em lote, janela `val`, sem os itens de `gold_dev` | Hiperparâmetros e early stopping         |
 | `redteam`      | 10              | Sintético                                                   | Testar prompt injection                  |
 
 Regras:
@@ -232,10 +232,11 @@ Regras:
 - Reanote 10% da amostra depois de pelo menos 7 dias e reporte Cohen's kappa intra-anotador.
 - Se uma classe tiver menos de 5 exemplos em `gold_dev`, revise a taxonomia antes de anotar `gold_test` e registre a decisão.
 - Se `gold_test` tiver menos de 30 casos de urgência alta, crie um conjunto extra enriquecido por busca de palavras-chave, com anotação cega, e reporte-o separadamente.
+- O silver é rotulado pelo modelo vencedor da triagem de C4 (seção 8). Começa com 2 mil a 5 mil rótulos e só cresce depois de medir o tempo de geração e passar no critério de concordância.
 
 ### Limitação da comparação
 
-Os modelos locais aprendem com rótulos do LLM, então tendem a imitá-lo e herdam parte dos erros. Isso favorece o LLM na comparação. Meça a concordância de `silver_val` contra `gold_dev` e explique esse efeito no relatório final.
+Os modelos locais aprendem com rótulos do LLM, então tendem a imitá-lo e herdam parte dos erros. Isso favorece o LLM na comparação. Um LLM local menor tende a gerar rótulos mais ruidosos. Por isso a concordância dos rótulos do LLM com `gold_dev` é critério de aceite do M2, e o efeito é explicado no relatório final. O critério está em `docs/decisions.md`: kappa de tema de pelo menos 0,60 e kappa ponderado de urgência de pelo menos 0,50, com faixas de alerta, intervalos de 95% e o recall de urgência alta sempre reportado.
 
 ## 8. Comparação de modelos
 
@@ -248,8 +249,8 @@ Os modelos locais aprendem com rótulos do LLM, então tendem a imitá-lo e herd
 | C1  | TF-IDF de palavras e caracteres + regressão logística | ML clássico já basta?                     |
 | C2  | Serafim + regressão logística                         | Embeddings prontos valem a dependência?   |
 | C3  | BERTimbau com fine-tuning                             | Treinar um transformer compensa?          |
-| C4  | LLM de menor custo                                    | Quanto o LLM ganha sem treino?            |
-| C5  | LLM de maior custo                                    | Pagar mais melhora o resultado?           |
+| C4  | LLM local menor: Gemma 4 E4B ou Qwen 3.5 4B (triagem) | Quanto o LLM ganha sem treino?            |
+| C5  | LLM local maior: Qwen 3.5 9B ou Llama 3.1 8B (triagem) | Mais computação melhora o resultado?     |
 | C6  | Cascata (seção 9)                                     | Dá para manter a qualidade pagando menos? |
 
 IDs `M0` a `M6` são sempre marcos do roadmap.
@@ -263,8 +264,17 @@ Orientações:
 
 - C1 e C2 usam dois classificadores: tema e urgência.
 - C3 usa um encoder com duas cabeças. Teste truncamento de 256 tokens e registre quantos textos são cortados.
-- O treino de C3 pode usar GPU, inclusive em ambiente externo, se G1 permitir. A inferência comparada é em CPU.
-- C4 e C5 usam structured outputs e prompts ajustados apenas em `gold_dev`.
+- O treino de C3 pode usar GPU na máquina do mantenedor. Ambiente externo não é permitido pela G1. A inferência comparada é em CPU, ou na mesma configuração para todos os modelos, declarada no relatório.
+- C4 e C5 são um modelo cada, escolhidos por triagem de quatro LLMs de pesos abertos rodando localmente. A triagem usa o mesmo prompt, a mesma decodificação e a mesma máquina sobre o `gold_dev`:
+
+  | Vaga           | Concorrentes               | Quem decide                                                 |
+  | -------------- | -------------------------- | ----------------------------------------------------------- |
+  | C4 (LLM menor) | Gemma 4 E4B × Qwen 3.5 4B  | Macro-F1 de tema no `gold_dev`, desempatando por velocidade |
+  | C5 (LLM maior) | Qwen 3.5 9B × Llama 3.1 8B | Macro-F1 de tema no `gold_dev` e viabilidade em 6 GB        |
+
+  Há empate em C4 quando o intervalo de 95% do bootstrap pareado da diferença de macro-F1 contém zero; aí vence a menor latência p50. Em C5, primeiro sai quem não roda em 6 GB; se nenhum rodar, C5 é cortado. As regras completas estão em `docs/decisions.md`.
+- C4 e C5 usam geração restrita por schema, ou validação com retry, e prompts ajustados apenas em `gold_dev`.
+- LLMs de API, como o Claude, não recebem texto do corpus (G1). O relatório declara isso como limitação.
 - Avalie curvas de aprendizado com 1.000, 5.000 e 20.000 rótulos silver.
 
 ### Métricas
@@ -272,18 +282,19 @@ Orientações:
 | Dimensão            | Métricas                                                                                    |
 | ------------------- | ------------------------------------------------------------------------------------------- |
 | Qualidade           | Macro-F1 de tema (principal), F1 por classe, macro-F1 de urgência e recall de urgência alta |
-| Custo de inferência | Custo por 1.000 reclamações, com tokens reais e preços de `configs/pricing.yaml`            |
-| Custo inicial       | Rótulos silver, tempo de treino e tempo de GPU                                              |
+| Custo de inferência | Tempo de máquina e memória por 1.000 reclamações, na mesma máquina                          |
+| Custo inicial       | Tempo para gerar os rótulos silver, tempo de treino e tempo de GPU                          |
 | Latência            | p50 e p95 por reclamação, em CPU, na mesma máquina                                          |
 | Operação            | Tamanho do artefato e memória usada                                                         |
 | Generalização       | Resultados em `test` e `test_unseen_company`                                                |
 
 Regras de medição:
 
-- Meça latência de LLM com chamadas individuais em pelo menos 200 reclamações. Não use o tempo de Batches como latência.
-- Reporte separadamente o preço padrão e o preço com Batches.
+- Meça latência de LLM com chamadas individuais em pelo menos 200 reclamações. Não use o tempo de processamento em lote como latência.
+- Reporte separadamente a latência por reclamação e a vazão em lote.
 - Use bootstrap pareado com 1.000 reamostragens para intervalos de 95%.
-- Calcule o **ponto de equilíbrio**: quantas reclamações são necessárias para o custo inicial do modelo local compensar frente ao LLM.
+- Calcule o **ponto de equilíbrio** em tempo de máquina: quantas reclamações são necessárias para o custo inicial do modelo treinado compensar frente ao LLM local. Uma conversão em US$ só vale com um hardware de referência declarado como premissa.
+- Preços de API (`configs/pricing.yaml`) não se aplicam a texto do corpus.
 
 Não existe um único vencedor obrigatório. O resultado é uma comparação clara: qual modelo escolher para cada prioridade de qualidade, custo e latência.
 
@@ -300,6 +311,7 @@ Reclamação
       -> regra de segurança ativada: LLM obrigatório
 ```
 
+- O LLM da cascata é o LLM local (C4 ou C5). A economia é medida em tempo de máquina e memória.
 - Use o classificador local escolhido em `gold_dev`.
 - Calibre a confiança com temperature scaling em `gold_dev`.
 - Teste vários thresholds `tau`.
@@ -307,7 +319,7 @@ Reclamação
   - macro-F1 de tema até 0,03 abaixo do LLM C4;
   - recall de urgência alta de pelo menos 0,90.
 
-Publique a curva de custo por 1.000 reclamações contra qualidade. **Essa curva é o principal resultado do projeto.**
+Publique a curva de tempo de máquina por 1.000 reclamações contra qualidade. **Essa curva é o principal resultado do projeto.**
 
 ## 10. Sugestão de resposta
 
@@ -323,7 +335,7 @@ Inclua apenas casos que atendam a todos estes critérios:
 
 Limite inicial: 50 mil casos, salvos em Parquet e arrays NumPy em `data/gold/index/`. Confirme os valores reais de `status` em `configs/retrieval.yaml`.
 
-A demo usa índice sintético por padrão (`CASES_INDEX=synthetic`). Só use casos reais se G1 permitir.
+A demo usa sempre o índice sintético (`CASES_INDEX=synthetic`), porque a G1 não permite exibir casos reais. O índice real serve só para avaliação local, na máquina do mantenedor.
 
 ### Recuperação
 
@@ -335,6 +347,8 @@ A demo usa índice sintético por padrão (`CASES_INDEX=synthetic`). Só use cas
 Compare BM25, vetorial e híbrido em 50 consultas com julgamento manual. Reporte Recall@5 e nDCG@5.
 
 ### Geração
+
+O gerador é o LLM local. Modelos menores escrevem pior em português, então validadores e abstenção pesam mais.
 
 Saída em JSON validado por Pydantic:
 
@@ -376,7 +390,7 @@ Compare o RAG com o baseline da resposta padronizada mais frequente da empresa. 
 | ------ | ------------------------------------------ | ---------------- | ---------- |
 | L0     | Testes unitários com `FakeLLM`             | Todo commit      | Zero       |
 | L1     | Replay de respostas gravadas e validadores | Todo PR          | Zero       |
-| L2     | `gold_dev` com LLM real                    | Manualmente      | Baixo      |
+| L2     | `gold_dev` com LLM local                   | Manualmente      | Tempo      |
 | L3     | `gold_test`, `redteam` e relatório final   | Uma vez, após G5 | Controlado |
 
 Respostas gravadas ficam em `evals/cassettes/`, indexadas por modelo, parâmetros, hash do prompt e hash da entrada. Cassettes versionadas usam apenas fixtures sintéticas.
@@ -437,7 +451,7 @@ A interface roda em `localhost` e mostra:
 Comportamento:
 
 - A entrada digitada não é salva.
-- A tela avisa para não inserir dados pessoais, porque o texto pode ir para o provedor do LLM.
+- A tela avisa para não inserir dados pessoais. Com o LLM local, o texto fica na máquina. Se a demo oferecer o Claude para texto digitado, que não vem do corpus, a tela avisa que esse texto vai para o provedor.
 - Se o LLM falhar, os resultados locais continuam visíveis e o erro aparece com clareza.
 - Requisições LLM têm timeout, retry limitado e cache em disco por hash.
 
@@ -446,7 +460,7 @@ Comportamento:
 Salve em `data/logs/llm_calls.jsonl`, sem texto da reclamação:
 
 ```text
-timestamp, experimento, modelo, tokens, custo estimado, latência, status, hash do prompt
+timestamp, experimento, backend, modelo, tokens, tempo, latência, custo estimado (só API), status, hash do prompt
 ```
 
 Esse arquivo alimenta `reports/metrics.json`.
@@ -463,13 +477,16 @@ Esse arquivo alimenta `reports/metrics.json`.
 | Deep learning | PyTorch + Transformers                | TensorFlow           | Ecossistema do BERTimbau                         |
 | Embeddings    | Sentence Transformers + Serafim       | API paga             | Sem custo por chamada                            |
 | Busca         | `bm25s` + NumPy                       | pgvector, Qdrant     | Corpus pequeno o bastante para memória           |
-| LLM           | SDK da Anthropic atrás de `LLMClient` | Framework de agentes | Fluxo pequeno, explícito e testável              |
+| LLM           | LLM local de pesos abertos atrás de `LLMClient` | API paga com texto do corpus | Exigência da G1; mesma máquina para todos os modelos |
+| LLM via API   | SDK da Anthropic atrás de `LLMClient`, só com texto que não vem do corpus | Framework de agentes | Fluxo pequeno, explícito e testável |
 | Tracking      | MLflow local, sem servidor            | Weights & Biases     | Rastreia experimentos sem infraestrutura         |
 | Interface     | Streamlit                             | React, API HTTP      | Tempo investido onde há mais sinal para ML       |
 | Orquestração  | Makefile + módulos Python             | Airflow              | Pipeline local e sem agendamento                 |
 | CI            | GitHub Actions                        | Outras               | Lint, tipos, testes e evals offline              |
 
-Modelos padrão, configuráveis por variável de ambiente:
+Os candidatos de C4 e C5 estão na seção 8. O ambiente de execução do LLM local (por exemplo, Ollama, llama.cpp ou Transformers) e a quantização são decididos no início do M3, antes da triagem, e registrados em `docs/decisions.md`. A configuração fica em `configs/llm_local.yaml`.
+
+Modelos de API, configuráveis por variável de ambiente e usados só com texto que não vem do corpus:
 
 ```text
 LLM_MODEL_CHEAP=claude-haiku-5-5
@@ -482,6 +499,7 @@ Antes de implementar o cliente, confirme em `platform.claude.com/docs` os modelo
 ### Decisões estruturais
 
 - **Sem API, banco ou containers:** reduz o peso do projeto, mas não demonstra serving. Isso é intencional e fica para outros projetos do portfólio.
+- **LLM local em vez de API:** cumpre a G1 e põe todos os modelos na mesma máquina, mas exige hardware e pode ficar abaixo de um LLM de API.
 - **Cascata em vez de LLM puro:** adiciona thresholds, mas revela o trade-off principal.
 - **Split temporal:** tende a piorar as métricas, mas evita uma avaliação otimista.
 - **Inferência em CPU:** BERT pode perder se não compensar latência e tamanho.
@@ -505,7 +523,8 @@ customer-feedback-ai/
 ├── configs/
 │   ├── data.yaml
 │   ├── labeling.yaml
-│   ├── pricing.yaml
+│   ├── llm_local.yaml        # ambiente, quantização e candidatos do LLM local
+│   ├── pricing.yaml          # só para API, com texto fora do corpus
 │   ├── retrieval.yaml
 │   ├── splits.yaml
 │   └── taxonomy.yaml
@@ -567,9 +586,10 @@ make splits          # gera splits e manifestos
 make taxonomy-sample # 200 reclamações de train para a leitura antes de G2
 make annotate        # abre a ferramenta de anotação
 make gold-report     # exporta o gold set e mede kappa e concordância silver
-make label-silver    # lote LLM, exige CONFIRM_COST=1
+make label-silver    # lote no LLM local; a API exige G1, CONFIRM_COST=1 e texto fora do corpus
+make llm-triage      # triagem dos quatro candidatos de C4 e C5 em gold_dev
 make train-local     # B0, B1, C1, C2 e C3
-make eval-dev        # L2: avalia modelos e cascata em gold_dev, usa LLM real
+make eval-dev        # L2: avalia modelos e cascata em gold_dev, usa o LLM local
 make build-index     # índice de casos
 make eval-retrieval  # compara BM25, vetorial e híbrido
 make eval-offline    # L0 e L1
@@ -616,10 +636,9 @@ O projeto roda localmente e não tem usuários externos. Mantenha apenas:
 
 ### Custo
 
-- Teto inicial do projeto: US$ 30 em LLM. O mantenedor pode alterar esse valor.
-- Todo job em lote calcula uma estimativa antes de rodar.
-- Jobs acima de US$ 5 exigem aprovação em G4 e `CONFIRM_COST=1`.
-- Use Batches para rótulos silver quando disponível.
+- Todo job em lote com o LLM local estima o tempo antes de rodar e registra o tempo real no manifesto.
+- O teto de US$ 30 em LLM e a aprovação G4 para jobs acima de US$ 5 só se aplicam se a API externa for liberada para texto do corpus. O mantenedor pode alterar esses valores.
+- Chamadas à API com texto que não vem do corpus (demo sintética, `redteam`) entram no registro de custo e contam no teto.
 
 ## 17. Roadmap e critérios de aceite
 
@@ -664,18 +683,20 @@ Entregas:
 Aceite:
 
 - G3 concluído por uma pessoa.
-- Custo estimado e custo real do silver registrados.
-- Concordância silver contra `gold_dev` medida.
+- Tempo estimado e tempo real do silver registrados.
+- Concordância dos rótulos do vencedor de C4 com `gold_dev` na faixa de aceite ou de alerta do critério em `docs/decisions.md`: kappa de tema de pelo menos 0,60 (alerta a partir de 0,50) e kappa ponderado de urgência de pelo menos 0,50 (alerta a partir de 0,40). Na faixa de alerta, a limitação é registrada.
 
 ### M3: Comparação de modelos (3 a 5 dias)
 
 Entregas:
 
-- B0, B1 e C1 a C5 avaliados em `gold_dev`.
+- Cliente do LLM local atrás do `LLMClient`, com medição de tempo e memória. A camada de LLM, o `FakeLLM`, o cache e o registro de chamadas já vieram no M2.
+- Triagem dos quatro candidatos (`make llm-triage`) e escolha de C4 e C5 registrada em `docs/decisions.md`.
+- Métricas de concordância do critério do silver no `make gold-report`: kappa ponderado de urgência, intervalos por bootstrap, recall de urgência alta com o número de casos e a faixa resultante.
+- B0, B1 e C1 a C5 avaliados em `gold_dev`, com C4 e C5 como LLMs locais.
 - Curvas de aprendizado.
-- Medição de custo, latência e tamanho.
-- `LLMClient`, `FakeLLM`, cache e registro de custo.
-- Primeira versão de `make demo`, com a classificação lado a lado.
+- Medição de tempo de máquina, memória, latência e tamanho.
+- Primeira versão de `make demo`, com a classificação lado a lado e índice sintético.
 
 Aceite:
 
@@ -717,7 +738,7 @@ Entregas:
 
 - `gold_test`, `test_unseen_company` e `redteam` avaliados uma vez.
 - README gerado com resultados reais.
-- Vídeo curto da demo.
+- Vídeo curto da demo, só com dados sintéticos (G1).
 - Limitações e aprendizados, incluindo pelo menos uma falha relevante.
 
 Aceite:
@@ -730,7 +751,7 @@ Aceite:
 Se o tempo apertar, corte nesta ordem:
 
 1. C2 como classificador. Serafim continua na recuperação.
-2. C5, mantendo o LLM de menor custo.
+2. C5, mantendo o C4.
 3. Busca híbrida, mantendo a melhor busca simples.
 4. Sugestão de resposta completa, mantendo classificação e cascata.
 
@@ -783,25 +804,30 @@ Marco ativo:
 
 | Risco                           | Efeito                       | Mitigação                                  |
 | ------------------------------- | ---------------------------- | ------------------------------------------ |
-| Licença impede uso planejado    | Comparação ou demo limitadas | G1 no início e seção 20                    |
+| Licença impede uso planejado    | Comparação ou demo limitadas | G1 decidida em 2026-11-04; opção A da seção 20 |
+| Hardware insuficiente para LLM local | Silver pequeno e comparação lenta | Limite de 6 GB na triagem de C5; medir o tempo antes de escalar; quantização |
 | Gold pequeno                    | Intervalos largos            | Reportar intervalos e limitar conclusões   |
 | Classes muito raras             | Macro-F1 instável            | Revisar taxonomia antes do `gold_test`     |
 | LLM silver propaga erros        | Modelos locais imitam o LLM  | Medir contra o gold e explicar o viés      |
 | Prompt injection em reclamações | Saída manipulada             | LLM sem ferramentas, validação e `redteam` |
-| Custo acima do esperado         | Interrupção                  | Estimativa, teto e amostragem              |
+| Tempo de máquina acima do esperado | Interrupção                | Estimativa de tempo, amostragem e volume inicial menor |
 | Escopo voltar a crescer         | Projeto inacabado            | Seção 5 e ordem de corte                   |
 
 ## 20. Planos B
 
 ### Se o envio do corpus a API externa não for permitido
 
-Essa restrição afeta o centro da comparação. Pare e apresente estas opções ao mantenedor:
+**Aplicado em 2026-11-04 (G1): o projeto segue a opção A, LLM de pesos abertos rodando localmente.**
+
+Essa restrição afeta o centro da comparação. As opções apresentadas ao mantenedor foram:
 
 - rodar um LLM de pesos abertos localmente atrás de `LLMClient`;
 - usar apenas rótulos humanos, em menor escala;
 - trocar a fonte por uma base compatível com o uso.
 
 ### Se a exibição de casos ou a publicação de modelos não for permitida
+
+**Aplicado em 2026-11-04 (G1).**
 
 - Mantenha treino e avaliação locais.
 - Use `CASES_INDEX=synthetic` na demo.
@@ -826,8 +852,8 @@ O projeto está pronto quando:
 - a demo local funciona com comandos documentados;
 - os pipelines são reproduzíveis;
 - baselines, TF-IDF, BERT, LLM e cascata foram comparados;
-- qualidade, custo e latência foram medidos;
-- a curva de custo contra qualidade foi publicada;
+- qualidade, tempo de máquina, memória e latência foram medidos;
+- a curva de tempo de máquina contra qualidade foi publicada;
 - os rascunhos passam por validação e revisão humana;
 - evals offline rodam em CI;
 - README, data card e model card trazem resultados e limitações reais;

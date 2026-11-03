@@ -1,7 +1,7 @@
 # Preços da API da Anthropic em US$ por milhão de tokens (AGENTS.md, seções 8 e 16).
-# Fonte: https://platform.claude.com/docs/en/about-claude/pricing (consultada em 2026-11-11).
+# Fonte: https://platform.claude.com/docs/en/about-claude/pricing
 # Atualize a data e os valores sempre que conferir a página de novo.
-checked_at: 2026-11-11
+checked_at: 2026-11-04
 source: https://platform.claude.com/docs/en/about-claude/pricing
 # Desconto do Message Batches API sobre entrada e saída.
 batch_discount: 0.5
