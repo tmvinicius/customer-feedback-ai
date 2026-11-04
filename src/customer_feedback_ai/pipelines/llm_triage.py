@@ -19,7 +19,12 @@ import duckdb
 
 from customer_feedback_ai.data import sql
 from customer_feedback_ai.data.duck import connect
-from customer_feedback_ai.data.manifest import build_manifest, file_record, write_manifest
+from customer_feedback_ai.data.manifest import (
+    build_manifest,
+    file_record,
+    git_state,
+    write_manifest,
+)
 from customer_feedback_ai.data.paths import DataPaths
 from customer_feedback_ai.errors import DataPipelineError
 from customer_feedback_ai.evaluation.llm_triage import (
@@ -29,6 +34,7 @@ from customer_feedback_ai.evaluation.llm_triage import (
     run_candidate,
     summarize,
 )
+from customer_feedback_ai.evaluation.tracking import Tracker
 from customer_feedback_ai.labeling.config import (
     LABELING_CONFIG_PATH,
     LabelingConfig,
@@ -116,6 +122,7 @@ def run(
     models: Sequence[str] | None = None,
     allow_incomplete: bool = False,
     use_cache: bool = True,
+    track: bool = True,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> dict[str, Any]:
     items, queue_size = gold_dev_items(paths, allow_incomplete)
@@ -201,15 +208,42 @@ def run(
             "some answers came from the cache with their original latency; "
             "use --fresh to re-measure"
         )
+    valid_for_choice = len(items) == queue_size and set(tags) == set(slots)
+    tracker = Tracker(paths.mlflow_dir, enabled=track)
+    git = git_state()
+    mlflow_runs = {
+        tag: tracker.log_run(
+            f"{tag}-{run_id}",
+            params={
+                "model": tag,
+                "slot": summary["slot"],
+                "prompt_version": prompt.version,
+                "prompt_sha256": prompt.sha256,
+                **{f"decoding.{k}": v for k, v in local.decoding.model_dump(mode="json").items()},
+                "quantization": summary["quantization"],
+                "gold_dev_labels": len(items),
+                "commit": git.commit,
+                "dirty": git.dirty,
+            },
+            metrics=summary,
+            tags={
+                "run_id": run_id,
+                "valid": str(valid_for_choice).lower(),
+                "step": "llm_triage",
+            },
+        )
+        for tag, summary in summaries.items()
+    }
     report = {
         "run_id": run_id,
-        "valid_for_choice": len(items) == queue_size and set(tags) == set(slots),
+        "valid_for_choice": valid_for_choice,
         "gold_dev_items": len(items),
         "prompt": {"version": prompt.version, "sha256": prompt.sha256},
         "decoding": local.decoding.model_dump(mode="json"),
         "candidates": summaries,
         "decisions": decisions,
         "suggested_chosen": {slot: d["winner"] for slot, d in decisions.items()},
+        "mlflow_runs": mlflow_runs,
         "notes": notes,
     }
     report_path = paths.reports_dir / "llm_triage.json"
@@ -261,6 +295,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--fresh", action="store_true", help="ignore cached answers and re-measure latency"
     )
+    parser.add_argument("--no-mlflow", action="store_true", help="skip the MLflow log")
     parser.add_argument("--config", type=Path, default=LABELING_CONFIG_PATH)
     parser.add_argument("--taxonomy", type=Path, default=TAXONOMY_PATH)
     parser.add_argument("--local-config", type=Path, default=LOCAL_LLM_CONFIG_PATH)
@@ -277,6 +312,7 @@ def main(argv: list[str] | None = None) -> None:
             models=args.models,
             allow_incomplete=args.allow_incomplete,
             use_cache=not args.fresh,
+            track=not args.no_mlflow,
         )
 
     run_cli(step)

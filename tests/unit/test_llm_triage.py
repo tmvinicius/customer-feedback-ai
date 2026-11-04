@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import sqlite3
 from datetime import UTC, datetime
 from typing import Any
 
@@ -112,6 +113,7 @@ def make_client(
 
 
 def triage(paths: DataPaths, taxonomy: Taxonomy, client: FakeChat, **kwargs: Any) -> dict[str, Any]:
+    kwargs.setdefault("track", False)
     return llm_triage.run(
         paths, SMALL_LABELING, taxonomy, LOCAL, client, now=lambda: FIXED_NOW, **kwargs
     )
@@ -190,7 +192,8 @@ def test_triage_picks_c4_and_c5_and_writes_aggregates(
 
 def test_outputs_have_no_complaint_text(labeling_paths: DataPaths, taxonomy: Taxonomy) -> None:
     label_all(labeling_paths, taxonomy, GOLD_DEV)
-    triage(labeling_paths, taxonomy, make_client(labeling_paths, taxonomy, STANDARD))
+    client = make_client(labeling_paths, taxonomy, STANDARD)
+    report = triage(labeling_paths, taxonomy, client, track=True)
 
     report_text = (labeling_paths.reports_dir / "llm_triage.json").read_text(encoding="utf-8")
     texts = [i.text for i in load_queue(labeling_paths.annotation_queue) if i.set == GOLD_DEV]
@@ -217,6 +220,15 @@ def test_outputs_have_no_complaint_text(labeling_paths: DataPaths, taxonomy: Tax
     }
     assert all(str(r["experiment"]).startswith("llm_triage/") for r in records)
     assert all("text" not in r for r in records)
+
+    db = sqlite3.connect(labeling_paths.mlflow_dir / "mlflow.db")
+    run_ids = {r[0] for r in db.execute("SELECT run_uuid FROM runs").fetchall()}
+    assert run_ids == set(report["mlflow_runs"].values())
+    assert db.execute("SELECT DISTINCT value FROM tags WHERE key = 'valid'").fetchall() == [
+        ("true",)
+    ]
+    logged = " ".join(v for (v,) in db.execute("SELECT value FROM params").fetchall())
+    assert not any(text in logged for text in texts)
 
 
 def test_invalid_replies_are_retried_once(labeling_paths: DataPaths, taxonomy: Taxonomy) -> None:
