@@ -1,0 +1,47 @@
+# B1: regras com palavras-chave (AGENTS.md, seção 8).
+# As palavras vêm da taxonomia e das diretrizes de anotação, não da leitura do corpus.
+# Ajustes só com base no gold_dev, nunca no gold_test (regra 4).
+#
+# O texto é comparado em minúsculas e sem acentos, por trecho contido.
+# Os temas são testados na ordem abaixo: o primeiro que casar vence. A ordem segue
+# as regras de desempate das diretrizes (fraude e negativação antes de cobrança,
+# reembolso antes de cobrança, e assim por diante).
+version: 0.1.0
+fallback_topic: outro
+
+topics:
+  - id: fraude_golpe
+    keywords: [golpe, fraude, nao reconheco, compra que nao fiz, nao fiz essa compra, clonad,
+               invadid, hacke, no meu nome, usaram meus dados]
+  - id: credito_negativacao
+    keywords: [negativ, serasa, spc, score, emprestimo, financiamento, renegocia,
+               cartao de credito, consignado]
+  - id: reembolso_estorno
+    keywords: [estorno, estornar, reembolso, dinheiro de volta, devolucao do dinheiro, ressarc]
+  - id: entrega_atraso
+    keywords: [entrega, nao chegou, rastreio, rastreamento, extravi, transportadora]
+  - id: produto_defeito
+    keywords: [defeito, quebrad, avaria, nao funciona, parou de funcionar, garantia,
+               assistencia tecnica, danificad]
+  - id: servico_indisponivel
+    keywords: [sem internet, sem sinal, sem energia, sem luz, sem agua, fora do ar,
+               instabilidade, conta bloqueada, servico interrompido, nao consigo acessar]
+  - id: cancelamento
+    keywords: [cancelar, cancelamento, rescis, encerrar o contrato, encerrar a conta]
+  - id: cobranca_indevida
+    keywords: [cobranc, cobrad, fatura, debito, boleto, valor indevido, duplicad]
+  - id: oferta_contrato
+    keywords: [oferta, propaganda, anuncio, promocao, contrato, reajuste, venda casada]
+  - id: dados_cadastro
+    keywords: [cadastro, dados pessoais, lgpd, meus dados, endereco]
+  - id: atendimento
+    keywords: [atendimento, atendente, sac, ninguem responde, sem retorno, sem resposta]
+
+urgency:
+  default: media
+  # Critérios de urgência alta das diretrizes: saúde, fraude em andamento, serviço
+  # essencial interrompido, prazo crítico e vulnerabilidade relatada.
+  alta: [oxigenio, uti, internad, cirurgia, tratamento, medicamento, remedio, risco de vida,
+         idoso, idosa, crianca, deficien, gestante, gravida, cancer, quimioterapia, clonad,
+         sem energia, sem luz, sem agua, sem gas, corte de energia, despejo, audiencia, urgente]
+  baixa: [ja foi resolvido, ja resolveram, foi resolvido, apenas registrar, so para registrar]

@@ -84,8 +84,10 @@ llm-triage: ## Triagem dos 4 LLMs locais em gold_dev (MODELS="tag ..." para um s
 	$(RUN) python -m customer_feedback_ai.pipelines.llm_triage \
 		$(if $(MODELS),--models $(MODELS)) $(if $(FRESH),--fresh)
 
-train-local: ## Treina B0, B1, C1, C2 e C3 (M3)
-	@$(call NOT_IMPLEMENTED,M3)
+train-local: ## Treina e mede B0, B1 e C1 no silver, com MLflow local (MODELS="b0 c1", TRAIN_SIZE=n)
+	$(RUN) python -m customer_feedback_ai.pipelines.train_local \
+		$(if $(MODELS),--models $(MODELS)) $(if $(TRAIN_SIZE),--train-size $(TRAIN_SIZE)) \
+		$(if $(ALLOW_FAKE_LABELS),--allow-fake-labels)
 
 eval-dev: ## L2: avalia modelos e cascata em gold_dev, usa LLM real (M3)
 	@$(call NOT_IMPLEMENTED,M3)

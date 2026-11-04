@@ -85,6 +85,16 @@ class DataPaths:
         return self.root / "reports"
 
     @property
+    def models_dir(self) -> Path:
+        """Trained local models: derived from the corpus, never published (G1)."""
+        return self.root / "models"
+
+    @property
+    def mlflow_dir(self) -> Path:
+        """Local MLflow tracking store (SQLite), without a server."""
+        return self.root / "mlflow"
+
+    @property
     def llm_cache_dir(self) -> Path:
         return self.root / "cache" / "llm"
 

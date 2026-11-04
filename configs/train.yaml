@@ -1,0 +1,23 @@
+# Treino dos modelos locais (AGENTS.md, seção 8). Lido por
+# src/customer_feedback_ai/models/config.py.
+
+seed: 20261104
+
+# C1: TF-IDF de palavras e caracteres + regressão logística, um classificador por saída.
+c1:
+  word_ngrams: [1, 2]
+  char_ngrams: [3, 5]
+  min_df: 2
+  max_features_word: 200000
+  max_features_char: 300000
+  # Regularização escolhida no silver_val, separadamente para tema e urgência.
+  c_grid: [0.25, 1.0, 4.0]
+  # Classes desbalanceadas: o objetivo é o macro-F1.
+  class_weight: balanced
+  max_iter: 2000
+
+measurement:
+  # Latência por reclamação: chamadas individuais em pelo menos 200 textos do silver_val.
+  latency_samples: 300
+  # Intervalos de 95% por bootstrap (AGENTS.md, seção 8).
+  bootstrap_resamples: 1000
