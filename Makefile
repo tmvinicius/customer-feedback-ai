@@ -14,13 +14,14 @@ NOT_IMPLEMENTED = echo "make $@: ainda não implementado (marco $(1)). Veja AGEN
 # Input for `make splits`: silver (full corpus) or dev_sample.
 SOURCE ?= silver
 SYNTHETIC_ROWS ?= 20000
-# label-silver: LLM=fake runs offline; APPROVED_USD records the G4 approval;
-# WAIT=1 polls until the batch ends. CONFIRM_COST=1 is read from the environment.
-LLM ?= anthropic
+# label-silver: LLM=local (Ollama, default), fake (offline) or anthropic (blocked by G1).
+# MODEL=<tag> picks a triage candidate instead of the chosen C4. For the API only:
+# APPROVED_USD records the G4 approval, WAIT=1 polls, CONFIRM_COST=1 is read from the environment.
+LLM ?= local
 
 .PHONY: help setup lint format typecheck test \
 	synthetic-data data sample splits taxonomy-sample \
-	annotate gold-report label-silver train-local eval-dev \
+	annotate gold-report label-silver llm-triage train-local eval-dev \
 	build-index eval-retrieval eval-offline eval-final report demo
 
 help: ## Lista os alvos disponíveis
@@ -72,11 +73,16 @@ annotate: ## Prepara a fila do gold set e abre a ferramenta de anotação
 gold-report: ## Exporta gold_dev e gold_test e gera o relatório de cobertura e kappa
 	$(RUN) python -m customer_feedback_ai.pipelines.gold_report
 
-label-silver: ## Rótulos silver em lote; exige CONFIRM_COST=1 e G1 (LLM=fake roda offline)
+label-silver: ## Rótulos silver com o LLM local (vencedor de C4); LLM=fake roda offline
 	$(RUN) python -m customer_feedback_ai.pipelines.label_silver --llm $(LLM) \
+		$(if $(MODEL),--model $(MODEL)) \
 		$(if $(APPROVED_USD),--approved-usd $(APPROVED_USD)) $(if $(WAIT),--wait)
 
 # --- Modelos e avaliação (M3 a M6) ---
+
+llm-triage: ## Triagem dos 4 LLMs locais em gold_dev (MODELS="tag ..." para um subconjunto)
+	$(RUN) python -m customer_feedback_ai.pipelines.llm_triage \
+		$(if $(MODELS),--models $(MODELS)) $(if $(FRESH),--fresh)
 
 train-local: ## Treina B0, B1, C1, C2 e C3 (M3)
 	@$(call NOT_IMPLEMENTED,M3)

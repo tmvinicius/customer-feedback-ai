@@ -143,8 +143,8 @@ def test_c4_tie_goes_to_the_faster_model() -> None:
     assert decision.reason.startswith("tie")
 
 
-def test_c5_drops_candidates_that_do_not_fit() -> None:
-    best = Candidate("qwen-3.5-9b", tuple(TRUTH), latency_p50_s=3.0, fits_in_vram=False)
+def test_c5_drops_candidates_that_are_not_viable() -> None:
+    best = Candidate("qwen-3.5-9b", tuple(TRUTH), latency_p50_s=3.0, viable=False)
     fits = Candidate("llama-3.1-8b", tuple(noisy(TRUTH, 0.4, seed=4)), latency_p50_s=2.5)
     decision = choose_larger(TRUTH, [best, fits])
 
@@ -152,17 +152,25 @@ def test_c5_drops_candidates_that_do_not_fit() -> None:
     assert "qwen-3.5-9b" in decision.reason
 
 
-def test_c5_is_cut_when_nothing_fits() -> None:
+def test_c5_is_cut_when_nothing_is_viable() -> None:
     candidates = [
-        Candidate("qwen-3.5-9b", tuple(TRUTH), 3.0, fits_in_vram=False),
-        Candidate("llama-3.1-8b", tuple(TRUTH), 2.5, fits_in_vram=False),
+        Candidate("qwen-3.5-9b", tuple(TRUTH), 3.0, viable=False),
+        Candidate("llama-3.1-8b", tuple(TRUTH), 2.5, viable=False),
     ]
     decision = choose_larger(TRUTH, candidates)
     assert decision.winner is None
     assert "cut" in decision.reason
 
 
-def test_c5_takes_the_higher_macro_f1_when_both_fit() -> None:
+def test_c5_takes_the_higher_macro_f1_when_both_are_viable() -> None:
     better = Candidate("qwen-3.5-9b", tuple(noisy(TRUTH, 0.1, seed=5)), 3.0)
     worse = Candidate("llama-3.1-8b", tuple(noisy(TRUTH, 0.5, seed=6)), 2.0)
     assert choose_larger(TRUTH, [worse, better]).winner == "qwen-3.5-9b"
+
+
+def test_c5_exact_tie_says_so_and_goes_to_the_faster_model() -> None:
+    slow = Candidate("qwen-3.5-9b", tuple(TRUTH), 3.0)
+    fast = Candidate("llama-3.1-8b", tuple(TRUTH), 2.0)
+    decision = choose_larger(TRUTH, [slow, fast])
+    assert decision.winner == "llama-3.1-8b"
+    assert decision.reason.startswith("exact tie")

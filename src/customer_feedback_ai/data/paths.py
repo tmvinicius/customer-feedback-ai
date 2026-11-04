@@ -75,6 +75,16 @@ class DataPaths:
         return self.silver_labels_dir / "batch_state.json"
 
     @property
+    def triage_dir(self) -> Path:
+        """Per-model predictions of the LLM triage (item ids and labels, no text)."""
+        return self.gold_dir / "triage"
+
+    @property
+    def reports_dir(self) -> Path:
+        """Local reports with aggregate numbers; kept out of Git like all of data/."""
+        return self.root / "reports"
+
+    @property
     def llm_cache_dir(self) -> Path:
         return self.root / "cache" / "llm"
 
