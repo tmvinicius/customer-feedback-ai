@@ -187,6 +187,8 @@ Consequências:
 
 ## 2026-11-04: Triagem dos LLMs locais para C4 e C5
 
+> O critério de viabilidade de C5 foi revisto na entrada "Ambiente do LLM local: Ollama, tags e camadas na CPU": parte das camadas pode ir para a CPU.
+
 Decisão:
 
 - C4 e C5 são um modelo cada. Quatro modelos de pesos abertos entram como candidatos de triagem, e no fim sobram dois: um para C4 e um para C5.
@@ -268,7 +270,7 @@ Alternativas: medir só na hora da triagem, sem registrar o hardware.
 Consequências:
 
 - Todas as medições de tempo, memória e latência são feitas nessa máquina e o relatório declara a configuração.
-- Com 32 GB de RAM, um modelo que não cabe na VRAM ainda pode rodar com parte das camadas na CPU, mais devagar. Falta confirmar se "viabilidade em 6 GB" exige o modelo inteiro na VRAM (proposta do agente) ou aceita esse modo misto.
+- Com 32 GB de RAM, um modelo que não cabe na VRAM ainda pode rodar com parte das camadas na CPU, mais devagar. O mantenedor confirmou que esse modo misto é aceito (entrada "Ambiente do LLM local").
 - Os candidatos de C4 (cerca de 4 bilhões de parâmetros) devem caber na VRAM com quantização de 4 bits. Os de C5 (8 a 9 bilhões) ficam no limite, e a triagem decide.
 
 ## 2026-11-04: Convenções das métricas de avaliação (M3)
@@ -286,4 +288,60 @@ Motivo: as métricas decidem a triagem, o aceite do M2 e a comparação de model
 Alternativas: macro-F1 sobre todos os temas da taxonomia, inclusive os ausentes; intervalos por aproximação normal; usar o scikit-learn desde já.
 
 Consequências: com poucos exemplos por tema no `gold_dev`, o macro-F1 oscila bastante, e os intervalos serão largos. Isso é reportado, não escondido.
+
+## 2026-11-04: Ambiente do LLM local: Ollama, tags e camadas na CPU
+
+Decisão:
+
+- O LLM local roda no **Ollama**, na máquina do mantenedor (`http://localhost:11434`). O cliente usa `POST /api/chat` com saída restrita por JSON schema (`format`), `GET /api/ps` para medir quanto do modelo está na VRAM e `POST /api/show` para ler a quantização.
+- Os candidatos são identificados pelas tags do Ollama, em minúsculas e com dois pontos, como o mantenedor passou:
+
+| Vaga | Tag do Ollama  | Nome no plano |
+| ---- | -------------- | ------------- |
+| C4   | `gemma4:e4b`   | Gemma 4 E4B   |
+| C4   | `qwen3.5:4b`   | Qwen 3.5 4B   |
+| C5   | `qwen3.5:9b`   | Qwen 3.5 9B   |
+| C5   | `llama3.1:8b`  | Llama 3.1 8B  |
+
+- Quantização: as tags padrão do Ollama, com Q4_K_M esperada. A quantização real é lida do Ollama e gravada no manifesto de cada execução; se for diferente da esperada, o cliente avisa, mas não para.
+- Decodificação igual para todos: temperatura 0, seed fixa, contexto de 4.096 tokens e `think: false`, que desliga o raciocínio dos modelos que pensam. Tudo fica em `configs/llm_local.yaml`.
+- **Camadas na CPU são aceitas.** Nem todo modelo cabe inteiro nos 6 GB de VRAM, e parte das camadas pode rodar na CPU, com os 32 GB de RAM. Na triagem de C5, viável é o candidato que responde todos os itens do `gold_dev` na máquina sem erro de execução. A fração do modelo na VRAM é medida e registrada, mas não é exigida. Se nenhum candidato de C5 for viável, C5 é cortado.
+- O vencedor de cada vaga é gravado em `chosen` no `configs/llm_local.yaml`, depois de registrado nesta página. Até lá, `make label-silver` exige `MODEL=<tag>` com um dos candidatos.
+
+Motivo: o Ollama oferece saída restrita por schema, quantização pronta e a medida da VRAM usada, sem compilar nada na máquina do mantenedor. Exigir o modelo inteiro na VRAM eliminaria os candidatos de 8 e 9 bilhões de parâmetros nos 6 GB disponíveis, e o custo do modo misto aparece na latência, que já é medida.
+
+Alternativas: llama.cpp via `llama-cpp-python`; Transformers com 4 bits; exigir o modelo inteiro na VRAM.
+
+Consequências:
+
+- O Ollama é um programa instalado à parte, fora do `uv.lock`. A versão do Ollama, a tag e a quantização de cada modelo vão para os manifestos.
+- Um modelo com camadas na CPU fica mais lento, o que pesa na latência de C5 e no tempo da cascata. Isso é reportado como resultado.
+- O silver usa o vencedor de C4. Com o LLM local, o job estima o tempo a partir das latências já medidas (a triagem mede primeiro) e registra o tempo real no manifesto, com custo zero.
+- `think: false` vale para todos os modelos. Se algum não aceitar o parâmetro, o erro aparece na primeira chamada, e o valor `null` em `configs/llm_local.yaml` deixa o padrão do modelo.
+
+## 2026-11-04: Execução da triagem dos LLMs (`make llm-triage`)
+
+Decisão:
+
+- A triagem usa os 150 itens do `gold_dev` com rótulo humano da primeira rodada. Com o `gold_dev` incompleto, o comando recusa. A opção `--allow-incomplete` existe só para rodadas de teste, e o relatório as marca como não válidas para a escolha.
+- Cada candidato recebe primeiro uma chamada de aquecimento, com texto sintético, que carrega o modelo e fica fora das medidas. Depois, cada reclamação é uma chamada individual.
+- Uma resposta inválida é reenviada uma vez. Se continuar inválida, conta como erro na métrica e nunca vira uma classe: o macro-F1 usa os rótulos do gold e os rótulos válidos previstos.
+- **Viável** é o candidato sem falha de execução em nenhuma chamada (por exemplo, falta de memória). Resposta inválida não tira a viabilidade, porque já pesa no macro-F1.
+- **C4:** um candidato não viável é desclassificado, porque o vencedor de C4 rotula o silver. Com os dois viáveis, vale a regra do intervalo pareado e da latência p50.
+- **C5:** um empate exato no macro-F1 de tema também vai para a menor latência p50, e o relatório diz que houve empate.
+- As respostas válidas vão para o cache por backend, com a mesma chave do job de silver. Assim, os itens do `gold_dev` não são rotulados de novo no silver. Uma nova rodada da triagem reaproveita o cache e a latência original. `--fresh` (ou `make llm-triage FRESH=1`) mede tudo de novo.
+- Saídas, sem texto de reclamação:
+  - `data/reports/llm_triage.json`, com métricas e intervalos, validade das respostas, latência p50 e p95, vazão, tempo de carga, quantização, fração na VRAM e a escolha sugerida;
+  - `data/gold/triage/<tag>.parquet`, com as previsões por item;
+  - o manifesto `llm_triage`;
+  - o registro de chamadas, que depois dá ao `make label-silver` a estimativa de tempo.
+- O pipeline só recomenda. O mantenedor registra a escolha nesta página e preenche `chosen` em `configs/llm_local.yaml`.
+- A latência da triagem vem de 150 chamadas. A medida final de latência do M3 (passo 9) usa pelo menos 200 reclamações, como pede o plano.
+- O registro no MLflow fica para o passo 6, junto com os primeiros treinos, para que todos os experimentos entrem no MLflow do mesmo jeito.
+
+Motivo: a escolha de C4 e C5 precisa ser reproduzível e explicável, e o aquecimento evita que o tempo de carregar o modelo distorça a latência do primeiro item.
+
+Alternativas: contar a resposta inválida como uma classe; aceitar um C4 com falhas de execução; medir a latência incluindo o carregamento; escrever o vencedor direto na configuração.
+
+Consequências: a triagem depende do `gold_dev` completo (G3). Com dois candidatos muito próximos, a decisão de C4 tende ao empate e, portanto, à velocidade.
 

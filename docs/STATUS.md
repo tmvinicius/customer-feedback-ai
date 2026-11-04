@@ -2,7 +2,7 @@
 
 Atualizado em: 2026-11-04
 Marco ativo: M3, Comparação de modelos. As decisões de entrada estão registradas: G1, plano B com LLM local, triagem de C4 e C5, critério do silver e treino só na máquina do mantenedor. M1 e M2 têm o código pronto, e o aceite depende de passos do mantenedor (ver "Pendências de aceite").
-Último commit na `main`: `e916f2c` (docs: revise plan and status for local LLMs and M3). O passo 1 do M3 aguarda revisão e commit do mantenedor.
+Último commit na `main`: `d75ac29` (docs: record hardware and metric conventions, update M3 status). Os passos 2, 3 e 4 do M3 aguardam revisão e commit do mantenedor.
 
 ## Decisões em vigor (2026-11-04)
 
@@ -13,12 +13,13 @@ Marco ativo: M3, Comparação de modelos. As decisões de entrada estão registr
   | Vaga           | Concorrentes               | Quem decide                                                 |
   | -------------- | -------------------------- | ----------------------------------------------------------- |
   | C4 (LLM menor) | Gemma 4 E4B × Qwen 3.5 4B  | Macro-F1 de tema no `gold_dev`, desempatando por velocidade |
-  | C5 (LLM maior) | Qwen 3.5 9B × Llama 3.1 8B | Macro-F1 de tema no `gold_dev` e viabilidade em 6 GB        |
+  | C5 (LLM maior) | Qwen 3.5 9B × Llama 3.1 8B | Macro-F1 de tema no `gold_dev` entre os viáveis na máquina  |
 
-  O vencedor de C4 também rotula o silver.
+  O vencedor de C4 também rotula o silver. Tags do Ollama: `gemma4:e4b`, `qwen3.5:4b`, `qwen3.5:9b` e `llama3.1:8b`.
 - **Critério do silver (aceite do M2):** kappa de tema de pelo menos 0,60 (alerta de 0,50 a 0,59) e kappa ponderado de urgência, com pesos lineares, de pelo menos 0,50 (alerta de 0,40 a 0,49). O recall de urgência alta é só reportado, com alerta abaixo de 0,80. Vale o valor pontual, com intervalo de 95% por bootstrap sempre ao lado, e vale a pior faixa entre tema e urgência.
 - **Ambiente externo:** treino e processamento com o corpus só na máquina do mantenedor, inclusive o C3.
-- **Hardware:** 6 GB de VRAM e 32 GB de RAM. O limite de 6 GB da triagem de C5 é de VRAM.
+- **Hardware:** 6 GB de VRAM e 32 GB de RAM. Parte das camadas pode ir para a CPU; em C5, viável é quem responde todo o `gold_dev` sem erro, e a fração na VRAM é registrada.
+- **Ambiente do LLM local:** Ollama, com as tags padrão (Q4_K_M esperada, a real registrada), temperatura 0, seed fixa, contexto de 4.096 tokens e `think: false`, em `configs/llm_local.yaml`.
 - **Métricas:** macro-F1 sobre os rótulos presentes no gold ou nas previsões, bootstrap por percentis com 1.000 reamostragens, bootstrap pareado nas comparações e kappa ponderado linear na urgência.
 - **Agente de código:** roda em nuvem, então trabalha só com dados sintéticos e vê apenas saídas agregadas, sem texto.
 - Registros completos em `docs/decisions.md`. `AGENTS.md`, README, `docs/data_card.md` e `docs/annotation_guidelines.md` estão alinhados com essas decisões.
@@ -58,6 +59,26 @@ Marco ativo: M3, Comparação de modelos. As decisões de entrada estão registr
   - Valores conferidos à mão nos testes, por exemplo o kappa ponderado de 5/7 (linear) e 0,8 (quadrático) para o mesmo par de sequências.
   - Comparação com o scikit-learn em 300 casos aleatórios (macro-F1, kappa, kappa ponderado linear e quadrático, recall): diferença máxima de 3e-16. O scikit-learn foi usado só nessa conferência e não virou dependência.
 
+- **Passos 2 e 3, ambiente e cliente do LLM local: concluídos.**
+  - Decisão registrada: Ollama, tags dos quatro candidatos, quantização esperada Q4_K_M com a real registrada, camadas na CPU aceitas e a viabilidade de C5 redefinida.
+  - `configs/llm_local.yaml` com o servidor, a decodificação comum, os candidatos por vaga e os vencedores (`chosen`), vazios até a triagem.
+  - Cliente `OllamaClient` atrás do `BatchLLMClient`: saída restrita pelo JSON schema, latência e tempo de carga por chamada, verificação de modelos baixados, quantização via `/api/show` e fração na VRAM via `/api/ps`. Mensagens claras quando o Ollama não está rodando (`ollama serve`) ou falta o modelo (`ollama pull`).
+  - `make label-silver` passa a usar o LLM local por padrão, com o vencedor de C4 ou `MODEL=<tag>`. Com o backend local, estima o tempo pelas latências já medidas e grava no manifesto o tempo real, o custo zero, a quantização e a fração na VRAM. Um job interrompido recomeça pelo cache.
+  - A regra de C5 em `evaluation/triage.py` passa a usar "viável" em vez de "cabe na VRAM".
+  - Evidências:
+    - `make lint typecheck test`: Ruff sem erros, mypy strict sem erros em 77 arquivos, 240 testes aprovados (19 novos).
+    - Os testes do cliente usam um transporte injetado e também um servidor HTTP real em `localhost`, criado no próprio teste, para os caminhos de erro. Nenhum teste chama o Ollama.
+    - Rodada de ponta a ponta de `label_silver` contra um servidor que imita a API do Ollama em `localhost`, com dados sintéticos. Sem C4 escolhido, o comando parou com instrução clara. Com `--model qwen3.5:4b`, rotulou 11.382 itens e o manifesto registrou backend `ollama`, tempo real, custo zero, quantização `Q4_K_M` e 75% na VRAM. Esses rótulos vieram do servidor de imitação e não valem como resultado.
+
+- **Passo 4, `make llm-triage`: construído.** A execução real depende do `gold_dev` anotado (G3) e dos modelos baixados no Ollama.
+  - Roda os candidatos no `gold_dev` com aquecimento fora das medidas, chamadas individuais, um reenvio para resposta inválida, e mede macro-F1 de tema e de urgência com intervalos, recall de urgência alta, validade das respostas, latência p50 e p95, vazão, tempo de carga, quantização e fração na VRAM.
+  - Aplica as regras de C4 e C5 e grava o relatório agregado, as previsões por item (sem texto) e o manifesto. Só recomenda: a escolha é registrada pelo mantenedor.
+  - O cache é compartilhado com o silver, e a triagem alimenta a estimativa de tempo do `make label-silver`.
+  - Evidências:
+    - `make lint typecheck test`: Ruff sem erros, mypy strict sem erros em 80 arquivos, 252 testes aprovados (12 novos).
+    - Rodada de ponta a ponta contra um servidor que imita o Ollama com os quatro modelos, sobre o `gold_dev` sintético com rótulos simulados. Os quatro rodaram nos 150 itens, as regras indicaram um vencedor por vaga, o relatório registrou fração na VRAM de 82% no modelo de 9B imitado, e o `label-silver` seguinte mostrou a estimativa de tempo e reaproveitou do cache os 150 itens do `gold_dev`. Os números vieram da imitação e não valem como resultado.
+    - A rodada mostrou que um empate exato em C5 era decidido pela latência com o motivo "maior macro-F1". O motivo agora diz que houve empate, e um teste cobre o caso.
+
 ## Pendências de aceite
 
 | Marco | Critério                                                       | Situação                                  | Responsável |
@@ -75,26 +96,25 @@ O agente desenvolve tudo com dados sintéticos. Treinos, triagem e avaliações 
 | Passo | Entrega                                                                                                                       | Depende de                           | Quem |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ---- |
 | 1 ✅  | **Avaliação (concluído):** módulo `evaluation/` com macro-F1 de tema e de urgência, F1 por classe, recall de urgência alta, bootstrap pareado com 1.000 reamostragens, intervalos de 95% e kappa ponderado. O `make gold-report` passa a mostrar a faixa do critério do silver. | nada                                 | agente |
-| 2     | **Ambiente do LLM local:** comparar Ollama, llama.cpp e Transformers quanto a saída restrita por schema, quantização, medição de memória e instalação. A escolha e a quantização vão para `docs/decisions.md` e `configs/llm_local.yaml`. | hardware definido (6 GB de VRAM, 32 GB de RAM); proposta do agente pendente de decisão | agente propõe, mantenedor decide |
-| 3     | **Cliente do LLM local:** backend atrás do `BatchLLMClient`, com `is_external = False`, saída restrita por schema ou validação com retry, e tempo e memória por chamada no registro. `make label-silver` passa a usá-lo por padrão, com estimativa de tempo no lugar da estimativa de custo. O treino recusa rótulos do `FakeLLM`. | passo 2                              | agente |
-| 4     | **`make llm-triage`:** roda os quatro candidatos no `gold_dev` e aplica as regras de escolha (macro-F1, empate pelo intervalo do bootstrap pareado, latência p50, limite de 6 GB). Grava as métricas e o MLflow. | passos 1 e 3; `gold_dev` anotado (G3) | agente constrói, mantenedor executa e registra a escolha |
+| 2 ✅  | **Ambiente do LLM local (concluído: Ollama):** comparar Ollama, llama.cpp e Transformers quanto a saída restrita por schema, quantização, medição de memória e instalação. A escolha e a quantização vão para `docs/decisions.md` e `configs/llm_local.yaml`. | hardware definido (6 GB de VRAM, 32 GB de RAM); proposta do agente pendente de decisão | agente propõe, mantenedor decide |
+| 3 ✅  | **Cliente do LLM local (concluído):** backend atrás do `BatchLLMClient`, com `is_external = False`, saída restrita por schema ou validação com retry, e tempo e memória por chamada no registro. `make label-silver` passa a usá-lo por padrão, com estimativa de tempo no lugar da estimativa de custo. O treino recusa rótulos do `FakeLLM`. | passo 2                              | agente |
+| 4 ✅  | **`make llm-triage` (construído; execução real pendente):** roda os quatro candidatos no `gold_dev` e aplica as regras de escolha (macro-F1, empate pelo intervalo do bootstrap pareado, latência p50, limite de 6 GB). Grava as métricas e o MLflow. | passos 1 e 3; `gold_dev` anotado (G3) | agente constrói, mantenedor executa e registra a escolha |
 | 5     | **Silver com o vencedor de C4:** medir o tempo por reclamação, gerar de 2 mil a 5 mil rótulos e aplicar o critério de concordância. Fecha o M2. | passo 4                              | mantenedor executa |
 | 6     | **B0, B1 e C1:** classe majoritária, regras com palavras-chave e TF-IDF com regressão logística (dois classificadores), com MLflow. | passo 1 (código); passo 5 (treino real) | agente |
 | 7     | **C2 e C3:** Serafim com regressão logística e BERTimbau com duas cabeças, testando o truncamento em 256 tokens. | passo 6                              | agente constrói, mantenedor treina |
 | 8     | **C4 e C5 e curvas:** avaliação dos dois LLMs escolhidos em `gold_dev`, com prompt versionado, e curvas de aprendizado com 1.000, 5.000 e 20.000 rótulos, conforme o tempo medido. | passos 4 e 5                         | mantenedor executa |
 | 9     | **Medições e demo:** latência p50 e p95, tempo de máquina e memória por 1.000, tamanho do artefato e ponto de equilíbrio em tempo de máquina. Primeira versão de `make demo`, com classificação lado a lado e índice sintético. | passos 6 a 8                         | agente |
 
-O passo 1 está pronto. O próximo é o passo 2, que depende da escolha do ambiente de execução. Em paralelo, o mantenedor pode:
+Os passos 1 a 4 estão prontos no código. O próximo do agente é o passo 6 (B0, B1 e C1 com MLflow), que pode ser desenvolvido com dados sintéticos. O passo 5 (silver) e a execução da triagem dependem do mantenedor. Em paralelo, o mantenedor pode:
 
 - rodar `make data sample splits taxonomy-sample` no corpus;
 - concluir G2;
 - anotar `gold_dev` com `make annotate`;
-- escolher o ambiente de execução do LLM local.
+- instalar o Ollama e baixar os quatro modelos (`ollama pull gemma4:e4b`, `qwen3.5:4b`, `qwen3.5:9b` e `llama3.1:8b`), conferindo a quantização com `ollama show <tag>`.
 
 ## Bloqueios
 
-- Ambiente de execução e quantização do LLM local não definidos. O agente propõe Ollama com quantização de 4 bits (mantenedor decide).
-- Falta confirmar se "viabilidade em 6 GB" exige o modelo inteiro na VRAM, que é a proposta do agente, ou aceita parte das camadas na CPU, já que há 32 GB de RAM (mantenedor).
+- Os quatro modelos ainda não foram testados na máquina do mantenedor. É preciso confirmar se as tags existem, se a quantização é Q4_K_M e se `think: false` é aceito por todos (mantenedor).
 - G2 parcial e G3 pendente (mantenedor). O `gold_dev` anotado é pré-requisito da triagem.
 - O formato real do CSV ainda não foi visto. Se divergir, `make data` para e aponta a coluna, e o ajuste é feito em `configs/data.yaml` (mantenedor e agente).
 - Os termos completos da licença não foram lidos. A G1 pode ser revista se eles permitirem mais usos (mantenedor).
