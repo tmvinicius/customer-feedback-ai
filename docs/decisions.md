@@ -345,3 +345,57 @@ Alternativas: contar a resposta inválida como uma classe; aceitar um C4 com fal
 
 Consequências: a triagem depende do `gold_dev` completo (G3). Com dois candidatos muito próximos, a decisão de C4 tende ao empate e, portanto, à velocidade.
 
+
+## 2026-11-04: Modelos locais B0, B1 e C1 e registro no MLflow (`make train-local`)
+
+Decisão:
+
+- **Entrada:** todos os modelos recebem só `reclamacao_labeled`. A lista de colunas passa pela mesma checagem de vazamento dos dados (`check_classifier_inputs`) e vai para o MLflow e o relatório.
+- **Treino e ajuste:** os modelos treinam no `silver_train` e se ajustam no `silver_val`. O `gold_dev` só avalia, quando já tem rótulos humanos. O `test` não é lido.
+- **B0:** prevê sempre o tema e a urgência mais frequentes do `silver_train`. Num empate, vence o rótulo que vem primeiro em ordem alfabética, para o resultado não depender da ordem das linhas.
+- **B1:** regras de palavras-chave em `configs/rules.yaml`, versão `v1`.
+  - O agente escreveu as regras a partir da taxonomia e das diretrizes de anotação, sem ver texto do corpus (G1).
+  - A comparação ignora caixa e acentos. Os temas são testados em ordem fixa, e vence o primeiro que casar. Sem casamento, o tema é `outro`.
+  - Urgência: `alta` se aparecer um termo da lista de alta, `baixa` se aparecer um da lista de baixa, `media` nos demais casos.
+  - B1 não aprende com rótulos. Um teste garante que as regras só usam temas da taxonomia.
+- **C1:** um vetorizador TF-IDF de palavras (1 e 2 gramas) e caracteres (3 a 5 gramas, `char_wb`), ajustado só no `silver_train`, compartilhado por duas regressões logísticas, uma para tema e outra para urgência.
+  - As duas usam `class_weight=balanced`, porque a métrica principal é o macro-F1.
+  - A regularização `C` vem da grade em `configs/train.yaml` e é escolhida no `silver_val` pelo macro-F1, separadamente para cada saída. Num empate, fica o `C` menor, que regulariza mais.
+  - Por isso os números de C1 no `silver_val` são otimistas, e o relatório avisa. O `gold_dev` é a medida comparável.
+- **Curvas de aprendizado:** `--train-size n` (ou `TRAIN_SIZE=n`) usa os `n` primeiros itens do `silver_train` em ordem de hash do texto. Isso se comporta como uma amostra aleatória fixa, e as amostras ficam aninhadas: as 1.000 estão dentro das 5.000, que estão dentro das 20.000.
+- **Medições:**
+  - tempo de treino (relógio do `fit`);
+  - memória de pico durante o treino e a inferência, medida pelo `tracemalloc` (heap do Python, que inclui os buffers do NumPy e do SciPy). Não é a memória total do processo, e o relatório final declara isso;
+  - tamanho do artefato salvo;
+  - latência p50 e p95 com chamadas individuais em 300 reclamações do `silver_val`, depois de uma chamada de aquecimento.
+
+  A comparação final com os LLMs, na mesma máquina e com o mesmo método, é o passo 9.
+- **Rótulos do `FakeLLM`:** o treino recusa. A opção `--allow-fake-labels` existe só para rodadas de teste com dados sintéticos, que ficam marcadas como `valid=false` no relatório, no manifesto e no MLflow.
+- **MLflow:** `mlflow-skinny`, com registro em SQLite em `<DATA_DIR>/mlflow/mlflow.db`, sem servidor.
+  - O MLflow 3 recusa o armazenamento em arquivos (`mlruns/`) sem uma variável de ambiente, por isso o SQLite. `sqlalchemy` e `alembic` entram como dependências dele.
+  - Os artefatos do MLflow, se houver, ficam em `<DATA_DIR>/mlflow/artifacts/`, nunca dentro do repositório.
+  - A telemetria do MLflow fica desligada, porque o projeto não contata serviços externos sem necessidade.
+  - Cada execução registra: commit e estado do repositório, SHA-256 dos arquivos de entrada, backend e modelo dos rótulos, hiperparâmetros e escolhas do treino, métricas no `silver_val` e no `gold_dev`, tempo, memória, tamanho e latência.
+  - A triagem dos LLMs (`make llm-triage`) também passa a registrar uma execução por candidato, como previa a decisão da triagem.
+  - Para ver as execuções: `uvx mlflow ui --backend-store-uri sqlite:///data/mlflow/mlflow.db`. O `uvx` baixa o MLflow completo num ambiente à parte, fora do `uv.lock`.
+- **Saídas:**
+  - `<DATA_DIR>/models/<run_id>/`, com os modelos treinados, que nunca são publicados (G1);
+  - `<DATA_DIR>/reports/train_local.json`, só com números agregados;
+  - o manifesto `train_local`.
+
+  O `reports/metrics.json` versionado e o `make report` vêm depois, com os resultados reais.
+
+Motivo: os baselines e o C1 são o piso e a referência clássica da comparação. Ajustar só no silver mantém o `gold_dev` como medida independente para o mesmo critério dos LLMs.
+
+Alternativas:
+
+- escolher o `C` no `gold_dev`;
+- usar um vetorizador por saída;
+- `mlflow` completo ou armazenamento em arquivos;
+- medir a memória pelo RSS do processo;
+- regras do B1 geradas por LLM ou ajustadas olhando os erros no `gold_dev`.
+
+Consequências:
+
+- O B1 é deliberadamente simples. Se o mantenedor revisar as regras depois da leitura das 200 reclamações (G2), deve aumentar a versão em `configs/rules.yaml`, que vai para o manifesto. Ajustar as regras olhando os erros no `gold_dev` deixaria o B1 otimista.
+- A memória pelo `tracemalloc` subestima bibliotecas que alocam fora do Python. No passo 9, a comparação com os LLMs precisa de uma medida comum (por exemplo, o RSS de pico em processo separado), e a escolha fica registrada.

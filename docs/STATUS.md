@@ -2,7 +2,7 @@
 
 Atualizado em: 2026-11-04
 Marco ativo: M3, Comparação de modelos. As decisões de entrada estão registradas: G1, plano B com LLM local, triagem de C4 e C5, critério do silver e treino só na máquina do mantenedor. M1 e M2 têm o código pronto, e o aceite depende de passos do mantenedor (ver "Pendências de aceite").
-Último commit na `main`: `d75ac29` (docs: record hardware and metric conventions, update M3 status). Os passos 2, 3 e 4 do M3 aguardam revisão e commit do mantenedor.
+Último commit na `main`: `d75ac29` (docs: record hardware and metric conventions, update M3 status). Os passos 2, 3, 4 e 6 do M3 aguardam revisão e commit do mantenedor.
 
 ## Decisões em vigor (2026-11-04)
 
@@ -79,6 +79,18 @@ Marco ativo: M3, Comparação de modelos. As decisões de entrada estão registr
     - Rodada de ponta a ponta contra um servidor que imita o Ollama com os quatro modelos, sobre o `gold_dev` sintético com rótulos simulados. Os quatro rodaram nos 150 itens, as regras indicaram um vencedor por vaga, o relatório registrou fração na VRAM de 82% no modelo de 9B imitado, e o `label-silver` seguinte mostrou a estimativa de tempo e reaproveitou do cache os 150 itens do `gold_dev`. Os números vieram da imitação e não valem como resultado.
     - A rodada mostrou que um empate exato em C5 era decidido pela latência com o motivo "maior macro-F1". O motivo agora diz que houve empate, e um teste cobre o caso.
 
+- **Passo 6, B0, B1 e C1 com MLflow (`make train-local`): construído.** O treino real depende do silver (passo 5).
+  - B0 (classe majoritária), B1 (regras de palavras-chave em `configs/rules.yaml`) e C1 (TF-IDF de palavras e caracteres com duas regressões logísticas, `C` escolhido no `silver_val`), atrás de uma interface comum de tema e urgência.
+  - Os modelos treinam no `silver_train`, se ajustam no `silver_val` e são avaliados no `silver_val` e no `gold_dev`, quando ele tem rótulos humanos. Métricas: macro-F1 de tema e de urgência com intervalos de 95%, F1 por classe com suporte e recall de urgência alta com suporte.
+  - Medições por modelo: tempo de treino, memória de pico no treino e na inferência, tamanho do artefato e latência p50 e p95 em 300 chamadas individuais.
+  - Registro no MLflow local (SQLite em `<DATA_DIR>/mlflow/`, sem servidor e sem telemetria), com commit, hashes dos dados, configuração, métricas, tamanho e latência. A triagem dos LLMs passa a registrar no mesmo lugar.
+  - `TRAIN_SIZE=n` prepara as curvas de aprendizado, com amostras aninhadas. Rótulos do `FakeLLM` são recusados, salvo em rodada de teste marcada como inválida (`ALLOW_FAKE_LABELS=1`).
+  - Evidências:
+    - `make lint typecheck test`: Ruff sem erros, mypy strict sem erros em 91 arquivos, 267 testes aprovados (15 novos).
+    - Os testes conferem o desempate do B0, acentos e prioridade das regras do B1, o aprendizado do C1 em textos separáveis, o salvamento e a recarga do C1, a recusa dos rótulos falsos, a coluna de entrada e uma rodada completa com o banco do MLflow.
+    - Rodada de ponta a ponta com `make train-local` nos dados sintéticos, com 9.632 rótulos do servidor que imita o Ollama. Os três modelos treinaram, o relatório, o manifesto e as três execuções no MLflow foram gravados, e `TRAIN_SIZE=1000` e `MODELS="b0 c1"` funcionaram. O C1 levou cerca de 17 s para treinar, com latência p50 de cerca de 6 ms. Esses números vêm de rótulos de imitação e não valem como resultado.
+    - A rodada revelou dois problemas, já corrigidos: o MLflow apontava os artefatos para `./mlruns` dentro do repositório, e tentava enviar telemetria a um servidor externo.
+
 ## Pendências de aceite
 
 | Marco | Critério                                                       | Situação                                  | Responsável |
@@ -100,16 +112,17 @@ O agente desenvolve tudo com dados sintéticos. Treinos, triagem e avaliações 
 | 3 ✅  | **Cliente do LLM local (concluído):** backend atrás do `BatchLLMClient`, com `is_external = False`, saída restrita por schema ou validação com retry, e tempo e memória por chamada no registro. `make label-silver` passa a usá-lo por padrão, com estimativa de tempo no lugar da estimativa de custo. O treino recusa rótulos do `FakeLLM`. | passo 2                              | agente |
 | 4 ✅  | **`make llm-triage` (construído; execução real pendente):** roda os quatro candidatos no `gold_dev` e aplica as regras de escolha (macro-F1, empate pelo intervalo do bootstrap pareado, latência p50, limite de 6 GB). Grava as métricas e o MLflow. | passos 1 e 3; `gold_dev` anotado (G3) | agente constrói, mantenedor executa e registra a escolha |
 | 5     | **Silver com o vencedor de C4:** medir o tempo por reclamação, gerar de 2 mil a 5 mil rótulos e aplicar o critério de concordância. Fecha o M2. | passo 4                              | mantenedor executa |
-| 6     | **B0, B1 e C1:** classe majoritária, regras com palavras-chave e TF-IDF com regressão logística (dois classificadores), com MLflow. | passo 1 (código); passo 5 (treino real) | agente |
+| 6 ✅  | **B0, B1 e C1 (construído; treino real pendente):** classe majoritária, regras com palavras-chave e TF-IDF com regressão logística (dois classificadores), com MLflow. | passo 1 (código); passo 5 (treino real) | agente |
 | 7     | **C2 e C3:** Serafim com regressão logística e BERTimbau com duas cabeças, testando o truncamento em 256 tokens. | passo 6                              | agente constrói, mantenedor treina |
 | 8     | **C4 e C5 e curvas:** avaliação dos dois LLMs escolhidos em `gold_dev`, com prompt versionado, e curvas de aprendizado com 1.000, 5.000 e 20.000 rótulos, conforme o tempo medido. | passos 4 e 5                         | mantenedor executa |
 | 9     | **Medições e demo:** latência p50 e p95, tempo de máquina e memória por 1.000, tamanho do artefato e ponto de equilíbrio em tempo de máquina. Primeira versão de `make demo`, com classificação lado a lado e índice sintético. | passos 6 a 8                         | agente |
 
-Os passos 1 a 4 estão prontos no código. O próximo do agente é o passo 6 (B0, B1 e C1 com MLflow), que pode ser desenvolvido com dados sintéticos. O passo 5 (silver) e a execução da triagem dependem do mantenedor. Em paralelo, o mantenedor pode:
+Os passos 1 a 4 e 6 estão prontos no código. O próximo do agente é o passo 7 (C2 com Serafim e C3 com BERTimbau), também desenvolvido com dados sintéticos. O passo 5 (silver) e a execução da triagem dependem do mantenedor. Em paralelo, o mantenedor pode:
 
 - rodar `make data sample splits taxonomy-sample` no corpus;
 - concluir G2;
 - anotar `gold_dev` com `make annotate`;
+- revisar as regras do B1 em `configs/rules.yaml` depois da leitura das 200 reclamações, aumentando a versão a cada mudança;
 - instalar o Ollama e baixar os quatro modelos (`ollama pull gemma4:e4b`, `qwen3.5:4b`, `qwen3.5:9b` e `llama3.1:8b`), conferindo a quantização com `ollama show <tag>`.
 
 ## Bloqueios

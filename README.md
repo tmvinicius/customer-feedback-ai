@@ -106,7 +106,7 @@ O corpus não tem rótulos de tema nem de urgência. Por isso, o projeto cria:
 | C4    | LLM local menor (pesos abertos)            |
 | C5    | LLM local maior (pesos abertos)            |
 
-C4 e C5 saem de uma triagem de quatro modelos de pesos abertos no `gold_dev`. Para C4, Gemma 4 E4B e Qwen 3.5 4B; vence o maior macro-F1 de tema, com desempate por velocidade. Para C5, Qwen 3.5 9B e Llama 3.1 8B; vence o maior macro-F1 entre os que rodam em 6 GB. O vencedor de C4 também gera os rótulos silver, que só são usados se passarem no critério de concordância com o gold humano.
+C4 e C5 saem de uma triagem de quatro modelos de pesos abertos no `gold_dev`. Para C4, Gemma 4 E4B e Qwen 3.5 4B; vence o maior macro-F1 de tema, com desempate por velocidade. Para C5, Qwen 3.5 9B e Llama 3.1 8B; vence o maior macro-F1 entre os que rodam na máquina (6 GB de VRAM, com camadas na CPU quando preciso). Os modelos rodam no Ollama. O vencedor de C4 também gera os rótulos silver, que só são usados se passarem no critério de concordância com o gold humano.
 | C6    | Cascata                                    |
 
 ### Cascata
@@ -176,7 +176,7 @@ As decisões do projeto ficam em [`docs/decisions.md`](docs/decisions.md).
 
 Os comandos abaixo são o fluxo planejado e estarão disponíveis conforme o roadmap avançar.
 
-Pré-requisitos: Python 3.12 e [uv](https://docs.astral.sh/uv/). Hoje funcionam os alvos de qualidade (`make setup`, `make lint`, `make typecheck` e `make test`), os de dados (`make data`, `make sample`, `make splits` e `make taxonomy-sample`) e os de rótulos (`make annotate`, `make label-silver` e `make gold-report`). Os demais avisam o marco em que serão implementados e terminam com erro. `make help` lista todos.
+Pré-requisitos: Python 3.12 e [uv](https://docs.astral.sh/uv/). Hoje funcionam os alvos de qualidade (`make setup`, `make lint`, `make typecheck` e `make test`), os de dados (`make data`, `make sample`, `make splits` e `make taxonomy-sample`), os de rótulos (`make annotate`, `make label-silver`, `make llm-triage` e `make gold-report`) e o treino dos modelos clássicos (`make train-local`, hoje com B0, B1 e C1). Os demais avisam o marco em que serão implementados e terminam com erro. `make help` lista todos.
 
 Para testar o pipeline de dados sem o corpus, use o corpus sintético em uma pasta separada:
 
@@ -192,6 +192,18 @@ make annotate DATA_DIR=data/synthetic
 
 ```bash
 make label-silver gold-report LLM=fake DATA_DIR=data/synthetic
+```
+
+O treino recusa rótulos do LLM falso. Para testar o fluxo com eles, marque a rodada como teste. Ela fica registrada como inválida no relatório e no MLflow local:
+
+```bash
+make train-local ALLOW_FAKE_LABELS=1 DATA_DIR=data/synthetic
+```
+
+As execuções ficam no MLflow local, em SQLite, e podem ser vistas com:
+
+```bash
+uvx mlflow ui --backend-store-uri sqlite:///data/synthetic/mlflow/mlflow.db
 ```
 
 ```bash
@@ -211,6 +223,7 @@ make sample
 make splits
 make taxonomy-sample
 make annotate
+make llm-triage
 make label-silver
 make gold-report
 make train-local
@@ -222,7 +235,25 @@ make report
 make demo
 ```
 
-`make label-silver`, `make eval-dev` e `make eval-final` vão usar um LLM de pesos abertos rodando localmente, cujo cliente chega no M3. Revise a estimativa de tempo antes de executá-los. O cliente da API da Anthropic continua no código, mas fica bloqueado com `ALLOW_EXTERNAL_LLM=false`, porque a decisão G1 não permite enviar texto do corpus a APIs externas.
+`make label-silver`, `make eval-dev` e `make eval-final` usam LLMs de pesos abertos rodando localmente no [Ollama](https://ollama.com). Instale o Ollama e baixe os quatro candidatos da triagem antes de executá-los:
+
+```bash
+ollama pull gemma4:e4b
+```
+
+```bash
+ollama pull qwen3.5:4b
+```
+
+```bash
+ollama pull qwen3.5:9b
+```
+
+```bash
+ollama pull llama3.1:8b
+```
+
+Antes da triagem, `make label-silver` exige `MODEL=<tag>` com um dos candidatos de C4. Depois dela, usa o vencedor registrado em `configs/llm_local.yaml`. O job mostra a estimativa de tempo e grava no manifesto o tempo real, a quantização e a fração do modelo na VRAM. O cliente da API da Anthropic continua no código, mas fica bloqueado com `ALLOW_EXTERNAL_LLM=false`, porque a decisão G1 não permite enviar texto do corpus a APIs externas.
 
 ## Estrutura
 
