@@ -26,6 +26,15 @@ dependencies = [
     "streamlit>=1.67,<2",
 ]
 
+[project.optional-dependencies]
+# C2 and C3 (PyTorch). Optional, because the CPU/CUDA wheels take several GB:
+# `make setup DEEP=1` installs them; CI runs without them.
+deep = [
+    "sentence-transformers>=6.3,<7",
+    "torch>=2.15,<3",
+    "transformers>=5.23,<6",
+]
+
 [dependency-groups]
 dev = [
     "mypy>=2.4",
@@ -68,6 +77,17 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = ["sklearn.*", "joblib.*", "mlflow.*"]
 ignore_missing_imports = true
+
+# The PyTorch stack is optional (extra `deep`) and absent in CI. Skipping it
+# keeps mypy's result the same whether or not it is installed.
+[[tool.mypy.overrides]]
+module = ["torch.*", "transformers.*", "sentence_transformers.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = ["customer_feedback_ai.models.bert"]
+disallow_subclassing_any = false
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
