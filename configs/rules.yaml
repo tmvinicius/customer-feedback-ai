@@ -1,47 +1,65 @@
 # B1: regras com palavras-chave (AGENTS.md, seção 8).
 # As palavras vêm da taxonomia e das diretrizes de anotação, não da leitura do corpus.
-# Ajustes só com base no gold_dev, nunca no gold_test (regra 4).
+# Ajustes só com base na taxonomia, nas diretrizes e na leitura das 200 reclamações
+# (G2). Ajustar olhando os erros no gold_dev deixaria o B1 otimista, e o gold_test
+# nunca é usado (regra 4). Cada mudança aumenta a versão, que vai para o manifesto.
 #
-# O texto é comparado em minúsculas e sem acentos, por trecho contido.
-# Os temas são testados na ordem abaixo: o primeiro que casar vence. A ordem segue
-# as regras de desempate das diretrizes (fraude e negativação antes de cobrança,
-# reembolso antes de cobrança, e assim por diante).
-version: 0.1.0
+# Comparação: minúsculas, sem acentos e por palavra inteira. Um termo que termina
+# em `*` é um radical e casa qualquer continuação ("negativ*" casa "negativado"),
+# mas sempre a partir do início de uma palavra. Assim "uti" não casa "utilizei".
+#
+# Os temas são testados na ordem abaixo, e o primeiro que casar vence. A ordem segue
+# as regras de desempate das diretrizes: fraude e negativação antes de cobrança,
+# reembolso antes de cobrança, defeito antes de entrega (produto que chegou com
+# defeito), cancelamento antes de cobrança e atendimento por último.
+version: 0.2.0
 fallback_topic: outro
 
 topics:
   - id: fraude_golpe
-    keywords: [golpe, fraude, nao reconheco, compra que nao fiz, nao fiz essa compra, clonad,
-               invadid, hacke, no meu nome, usaram meus dados]
+    keywords: [golpe*, fraude*, fraudulent*, nao reconheco, compra que nao fiz,
+               compras que nao fiz, nao fiz essa compra, nao realizei, clonad*, invadid*,
+               hacke*, usaram meus dados]
+  # "cartão de crédito" ficou de fora: aparece em muitas queixas de cobrança e fraude.
   - id: credito_negativacao
-    keywords: [negativ, serasa, spc, score, emprestimo, financiamento, renegocia,
-               cartao de credito, consignado]
+    keywords: [negativ*, serasa, spc, score, emprestimo*, financiamento*, renegocia*,
+               consignado*, nome sujo]
   - id: reembolso_estorno
-    keywords: [estorno, estornar, reembolso, dinheiro de volta, devolucao do dinheiro, ressarc]
-  - id: entrega_atraso
-    keywords: [entrega, nao chegou, rastreio, rastreamento, extravi, transportadora]
+    keywords: [estorn*, reembols*, dinheiro de volta, devolucao do dinheiro,
+               devolucao do valor, ressarc*]
   - id: produto_defeito
-    keywords: [defeito, quebrad, avaria, nao funciona, parou de funcionar, garantia,
-               assistencia tecnica, danificad]
+    keywords: [defeito*, defeituos*, quebrad*, avaria*, avariad*, nao funciona,
+               parou de funcionar, garantia, assistencia tecnica, danificad*]
+  - id: entrega_atraso
+    keywords: [nao chegou, nao foi entregue, nao recebi o produto, nao recebi o pedido,
+               atraso na entrega, prazo de entrega, previsao de entrega, rastreio,
+               rastreamento, extravi*, transportadora, entregue errado, produto errado]
   - id: servico_indisponivel
-    keywords: [sem internet, sem sinal, sem energia, sem luz, sem agua, fora do ar,
-               instabilidade, conta bloqueada, servico interrompido, nao consigo acessar]
+    keywords: [sem internet, sem sinal, sem energia, sem luz, sem agua, sem telefone,
+               fora do ar, instabilidade, conta bloqueada, servico interrompido,
+               nao consigo acessar]
   - id: cancelamento
-    keywords: [cancelar, cancelamento, rescis, encerrar o contrato, encerrar a conta]
+    keywords: [cancelar, cancelamento, rescis*, encerrar o contrato, encerrar a conta]
   - id: cobranca_indevida
-    keywords: [cobranc, cobrad, fatura, debito, boleto, valor indevido, duplicad]
+    keywords: [cobranc*, cobrad*, cobrar*, fatura*, debito*, boleto*, valor indevido,
+               duplicad*]
   - id: oferta_contrato
-    keywords: [oferta, propaganda, anuncio, promocao, contrato, reajuste, venda casada]
+    keywords: [oferta*, propaganda*, anuncio*, anunciad*, promocao, promocoes, contrato*,
+               reajuste*, venda casada]
   - id: dados_cadastro
-    keywords: [cadastro, dados pessoais, lgpd, meus dados, endereco]
+    keywords: [cadastro*, cadastra*, dados pessoais, lgpd, meus dados, alterar meus dados,
+               excluir meus dados]
   - id: atendimento
-    keywords: [atendimento, atendente, sac, ninguem responde, sem retorno, sem resposta]
+    keywords: [atendimento, atendente*, sac, ninguem responde, sem retorno, sem resposta]
 
 urgency:
   default: media
   # Critérios de urgência alta das diretrizes: saúde, fraude em andamento, serviço
-  # essencial interrompido, prazo crítico e vulnerabilidade relatada.
-  alta: [oxigenio, uti, internad, cirurgia, tratamento, medicamento, remedio, risco de vida,
-         idoso, idosa, crianca, deficien, gestante, gravida, cancer, quimioterapia, clonad,
-         sem energia, sem luz, sem agua, sem gas, corte de energia, despejo, audiencia, urgente]
+  # essencial interrompido (inclui telefonia e internet), prazo crítico e
+  # vulnerabilidade relatada.
+  alta: [oxigenio, uti, internad*, cirurgia*, tratamento medico, tratamento de saude,
+         medicamento*, remedio*, risco de vida, idoso*, idosa*, crianca*, deficien*,
+         gestante*, gravida*, cancer, quimioterapia, clonad*, sem energia, sem luz,
+         sem agua, sem gas, sem internet, sem sinal, sem telefone, corte de energia,
+         aviso de corte, ameaca de corte, despejo, audiencia, urgente*, urgencia]
   baixa: [ja foi resolvido, ja resolveram, foi resolvido, apenas registrar, so para registrar]
