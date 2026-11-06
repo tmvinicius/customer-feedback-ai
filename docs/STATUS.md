@@ -2,7 +2,7 @@
 
 Atualizado em: 2026-11-04
 Marco ativo: M3, Comparação de modelos. As decisões de entrada estão registradas: G1, plano B com LLM local, triagem de C4 e C5, critério do silver e treino só na máquina do mantenedor. M1 e M2 têm o código pronto, e o aceite depende de passos do mantenedor (ver "Pendências de aceite").
-Último commit na `main`: `d75ac29` (docs: record hardware and metric conventions, update M3 status). Os passos 2, 3, 4 e 6 do M3 aguardam revisão e commit do mantenedor.
+Último commit na `main`: `d75ac29` (docs: record hardware and metric conventions, update M3 status). Os passos 2, 3, 4, 6 e 7 do M3 aguardam revisão e commit do mantenedor.
 
 ## Decisões em vigor (2026-11-04)
 
@@ -91,6 +91,21 @@ Marco ativo: M3, Comparação de modelos. As decisões de entrada estão registr
     - Rodada de ponta a ponta com `make train-local` nos dados sintéticos, com 9.632 rótulos do servidor que imita o Ollama. Os três modelos treinaram, o relatório, o manifesto e as três execuções no MLflow foram gravados, e `TRAIN_SIZE=1000` e `MODELS="b0 c1"` funcionaram. O C1 levou cerca de 17 s para treinar, com latência p50 de cerca de 6 ms. Esses números vêm de rótulos de imitação e não valem como resultado.
     - A rodada revelou dois problemas, já corrigidos: o MLflow apontava os artefatos para `./mlruns` dentro do repositório, e tentava enviar telemetria a um servidor externo.
 
+- **Revisão do passo 6: concluída.** Três pontos revistos a pedido do mantenedor, registrados em `docs/decisions.md`:
+  - **Regras do B1 (versão 0.2.0):** comparação por palavra inteira, com radicais marcados por `*`. Saíram casamentos errados, como `uti` em "utilizei" e `sac` em "transação". A ordem passou a seguir o desempate de defeito e entrega, e a urgência alta ganhou a interrupção de telefonia e internet. Oito frases inventadas viraram testes.
+  - **Memória:** medida num processo novo, só com CPU, que carrega o modelo salvo. Mede carga, latência, CPU por 1.000 reclamações e pico de memória residente. No Linux o pico vem do `VmHWM`, porque o `ru_maxrss` herda o pico do processo pai (411 MB contra 10 MB num teste). O `tracemalloc` saiu: não via o PyTorch e deixava o treino mais lento enquanto o tempo era medido.
+  - **Números do `silver_val`:** o ajuste continua nele, como o plano define, para C1, C2 e C3. A comparação entre modelos é no `gold_dev`, e o relatório diz isso.
+
+- **Passo 7, C2 e C3: construído.** O treino real depende do silver (passo 5) e, para o C3, da GPU do mantenedor.
+  - C2: embeddings do Serafim, sem fine-tuning, com uma regressão logística por saída. O encoder vai junto com o modelo salvo.
+  - C3: BERTimbau com duas cabeças, truncamento em 256 tokens, fp16 na GPU, early stopping no `silver_val` e inferência medida em CPU. Registra textos cortados, épocas, dispositivo e pico de memória da GPU.
+  - PyTorch, Transformers e Sentence Transformers no extra opcional `deep` (`make setup DEEP=1`). A CI roda sem ele e pula os testes do C2 e do C3.
+  - Evidências:
+    - `make lint typecheck test` com o extra instalado: Ruff sem erros, mypy strict sem erros em 97 arquivos, 288 testes aprovados (21 novos desde o passo 6). Os testes do C2 e do C3 usam um BERT minúsculo criado no próprio teste, sem download.
+    - Os testes conferem o aprendizado do C3 em textos separáveis, a contagem de textos cortados, o early stopping, o salvamento e a recarga do C2 e do C3, e a medição de memória num processo filho.
+    - Rodada de ponta a ponta com os cinco modelos nos dados sintéticos, com 3.000 rótulos do servidor que imita o Ollama e o BERT minúsculo no lugar do Serafim e do BERTimbau. Os cinco treinaram e foram medidos. Todos partiram de 30 MB antes da carga; o C1 somou 167 MB, e o C2 e o C3 cerca de 940 MB, quase tudo do PyTorch. Esses números não valem como resultado.
+    - A rodada revelou o problema do `ru_maxrss` acima, e a construção dos testes revelou que o Transformers 5 ignora em silêncio o argumento `vocab_file` do tokenizador. Esse segundo caso afetava só o teste.
+
 ## Pendências de aceite
 
 | Marco | Critério                                                       | Situação                                  | Responsável |
@@ -113,16 +128,17 @@ O agente desenvolve tudo com dados sintéticos. Treinos, triagem e avaliações 
 | 4 ✅  | **`make llm-triage` (construído; execução real pendente):** roda os quatro candidatos no `gold_dev` e aplica as regras de escolha (macro-F1, empate pelo intervalo do bootstrap pareado, latência p50, limite de 6 GB). Grava as métricas e o MLflow. | passos 1 e 3; `gold_dev` anotado (G3) | agente constrói, mantenedor executa e registra a escolha |
 | 5     | **Silver com o vencedor de C4:** medir o tempo por reclamação, gerar de 2 mil a 5 mil rótulos e aplicar o critério de concordância. Fecha o M2. | passo 4                              | mantenedor executa |
 | 6 ✅  | **B0, B1 e C1 (construído; treino real pendente):** classe majoritária, regras com palavras-chave e TF-IDF com regressão logística (dois classificadores), com MLflow. | passo 1 (código); passo 5 (treino real) | agente |
-| 7     | **C2 e C3:** Serafim com regressão logística e BERTimbau com duas cabeças, testando o truncamento em 256 tokens. | passo 6                              | agente constrói, mantenedor treina |
+| 7 ✅  | **C2 e C3 (construído; treino real pendente):** Serafim com regressão logística e BERTimbau com duas cabeças, testando o truncamento em 256 tokens. | passo 6                              | agente constrói, mantenedor treina |
 | 8     | **C4 e C5 e curvas:** avaliação dos dois LLMs escolhidos em `gold_dev`, com prompt versionado, e curvas de aprendizado com 1.000, 5.000 e 20.000 rótulos, conforme o tempo medido. | passos 4 e 5                         | mantenedor executa |
 | 9     | **Medições e demo:** latência p50 e p95, tempo de máquina e memória por 1.000, tamanho do artefato e ponto de equilíbrio em tempo de máquina. Primeira versão de `make demo`, com classificação lado a lado e índice sintético. | passos 6 a 8                         | agente |
 
-Os passos 1 a 4 e 6 estão prontos no código. O próximo do agente é o passo 7 (C2 com Serafim e C3 com BERTimbau), também desenvolvido com dados sintéticos. O passo 5 (silver) e a execução da triagem dependem do mantenedor. Em paralelo, o mantenedor pode:
+Os passos 1 a 4, 6 e 7 estão prontos no código. O passo 8 roda com as ferramentas existentes (`make llm-triage` e `make train-local TRAIN_SIZE=n`). O próximo do agente é o passo 9: medições comparadas com os LLMs, ponto de equilíbrio e primeira versão da demo. O passo 5 (silver) e a execução da triagem dependem do mantenedor. Em paralelo, o mantenedor pode:
 
 - rodar `make data sample splits taxonomy-sample` no corpus;
 - concluir G2;
 - anotar `gold_dev` com `make annotate`;
-- revisar as regras do B1 em `configs/rules.yaml` depois da leitura das 200 reclamações, aumentando a versão a cada mudança;
+- revisar as regras do B1 em `configs/rules.yaml` depois da leitura das 200 reclamações, aumentando a versão a cada mudança, e esclarecer no G2 quais assuntos de cartão de crédito entram em `credito_negativacao`;
+- instalar o extra do PyTorch (`make setup DEEP=1`) e confirmar que o PyTorch vê a GPU (`uv run python -c "import torch; print(torch.cuda.is_available())"`);
 - instalar o Ollama e baixar os quatro modelos (`ollama pull gemma4:e4b`, `qwen3.5:4b`, `qwen3.5:9b` e `llama3.1:8b`), conferindo a quantização com `ollama show <tag>`.
 
 ## Bloqueios

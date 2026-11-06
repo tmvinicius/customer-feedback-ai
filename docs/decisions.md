@@ -363,7 +363,7 @@ Decisão:
   - A regularização `C` vem da grade em `configs/train.yaml` e é escolhida no `silver_val` pelo macro-F1, separadamente para cada saída. Num empate, fica o `C` menor, que regulariza mais.
   - Por isso os números de C1 no `silver_val` são otimistas, e o relatório avisa. O `gold_dev` é a medida comparável.
 - **Curvas de aprendizado:** `--train-size n` (ou `TRAIN_SIZE=n`) usa os `n` primeiros itens do `silver_train` em ordem de hash do texto. Isso se comporta como uma amostra aleatória fixa, e as amostras ficam aninhadas: as 1.000 estão dentro das 5.000, que estão dentro das 20.000.
-- **Medições:**
+- **Medições** (a parte de memória foi substituída na revisão abaixo, "Revisão do B1, da medição de memória e dos números do `silver_val`"):
   - tempo de treino (relógio do `fit`);
   - memória de pico durante o treino e a inferência, medida pelo `tracemalloc` (heap do Python, que inclui os buffers do NumPy e do SciPy). Não é a memória total do processo, e o relatório final declara isso;
   - tamanho do artefato salvo;
@@ -399,3 +399,72 @@ Consequências:
 
 - O B1 é deliberadamente simples. Se o mantenedor revisar as regras depois da leitura das 200 reclamações (G2), deve aumentar a versão em `configs/rules.yaml`, que vai para o manifesto. Ajustar as regras olhando os erros no `gold_dev` deixaria o B1 otimista.
 - A memória pelo `tracemalloc` subestima bibliotecas que alocam fora do Python. No passo 9, a comparação com os LLMs precisa de uma medida comum (por exemplo, o RSS de pico em processo separado), e a escolha fica registrada.
+
+## 2026-11-04: Revisão do B1, da medição de memória e dos números do `silver_val`
+
+Decisão:
+
+- **B1, regras versão 0.2.0.** A revisão das regras contra a taxonomia e as diretrizes achou casamentos errados, que foram corrigidos:
+  - A comparação passa a ser por palavra inteira. Um termo terminado em `*` é um radical (`negativ*` casa "negativado"), sempre a partir do início de uma palavra. Antes, `uti` casava "utilizei" e dava urgência alta, e `sac` casava "transação" e "sacar".
+  - `tratamento` saiu da urgência alta, porque "péssimo tratamento do atendente" é comum. Ficaram `tratamento medico` e `tratamento de saude`.
+  - `endereco` saiu de `dados_cadastro`, porque aparece muito em queixas de entrega.
+  - `cartao de credito` saiu de `credito_negativacao`. Ele vinha antes de `cobranca_indevida` e pegava cobranças no cartão, que pela regra de desempate são cobrança.
+  - `produto_defeito` passou para antes de `entrega_atraso`, como manda o desempate ("chegou com defeito"). As palavras de entrega ficaram mais específicas (`nao chegou`, `atraso na entrega`, `rastreio`...), e `entrega` sozinha saiu.
+  - A urgência alta ganhou `sem internet`, `sem sinal` e `sem telefone`, porque as diretrizes contam telefonia e internet como serviços essenciais, além de `aviso de corte`, `ameaca de corte` e `urgencia`.
+  - Os casos acima viraram testes, com frases inventadas.
+- **Memória medida em processo separado.** O `tracemalloc` saiu, por dois motivos: ele não enxerga a memória alocada fora do Python (PyTorch, no C2 e no C3), e o rastreamento deixava o `fit` mais lento enquanto o tempo de treino era medido.
+  - Depois do treino, um processo novo, só com CPU, carrega o modelo salvo e classifica as reclamações do `silver_val` uma por chamada. Ele mede o tempo de carga, a latência p50 e p95, o tempo de CPU por 1.000 reclamações e o pico de memória residente (RSS).
+  - **Memória do modelo** é o pico do processo menos a memória antes de carregar o modelo, com as bibliotecas que o modelo importa (scikit-learn, PyTorch). Os imports são preguiçosos, então o B0 não paga pelo PyTorch.
+  - No Linux, o pico vem do `VmHWM` (`/proc/self/status`), não do `ru_maxrss`. Um processo filho herda no `ru_maxrss` o pico do pai: num teste, o filho de um processo com 400 MB alocados mostrou 411 MB pelo `ru_maxrss` e 10 MB pelo `VmHWM`. No macOS, o pico vem do `ru_maxrss`; no Windows, fica vazio. O relatório registra o método.
+  - A memória do treino deixa de ser medida, porque o plano pede memória de inferência. O C3 registra o pico de memória da GPU.
+  - Para os LLMs (passo 9), a memória vem do Ollama (RAM e VRAM do modelo carregado), já que o modelo roda no processo do servidor. A forma de pôr as duas medidas lado a lado fica para o passo 9.
+- **Números do `silver_val`.** O ajuste continua no `silver_val`, como o plano define para hiperparâmetros e early stopping: regularização do C1 e do C2, e early stopping do C3. Assim, os três modelos ajustáveis têm o mesmo tratamento. Os números deles no `silver_val` são otimistas e servem só para acompanhar o ajuste. A comparação entre modelos usa o `gold_dev`, e o relatório diz isso nos campos `comparison_set` e `tuned_on_silver_val`. No C1, o otimismo tende a ser pequeno, porque a grade tem três valores.
+
+Motivo: as regras do B1 precisam ser simples, mas não erradas por detalhe de implementação. A memória precisa ser comparável entre modelos de bibliotecas diferentes. O `gold_dev` é o único conjunto que nenhum modelo usou para ajuste.
+
+Alternativas:
+
+- manter a busca por trecho, com listas de exceções;
+- medir a memória pelo RSS do processo principal;
+- escolher a regularização por validação cruzada no `silver_train`, que custaria várias vezes o treino do C3 e se afastaria do plano.
+
+Consequências:
+
+- A memória do C2 e do C3 inclui o PyTorch, que sozinho ocupa centenas de MB. Esse é o custo real de operar esses modelos.
+- A taxonomia descreve `credito_negativacao` com "cartão de crédito", e o desempate manda cobranças para `cobranca_indevida`. Fica a sugestão para o G2: deixar claro quais assuntos de cartão entram em crédito (por exemplo, limite, anuidade ou contratação).
+
+## 2026-11-04: C2 e C3 (passo 7)
+
+Decisão:
+
+- **Dependências:** PyTorch, Transformers e Sentence Transformers ficam no extra opcional `deep`, instalado com `make setup DEEP=1`.
+  - O pacote do PyTorch para Linux traz as bibliotecas CUDA e ocupa vários GB, então a CI roda sem ele. Os testes do C2 e do C3 são pulados lá e rodam onde o extra está instalado.
+  - O mypy trata essas bibliotecas como `Any`, com ou sem elas instaladas, para dar o mesmo resultado na CI e na máquina do mantenedor.
+  - Sem o extra, pedir C2 ou C3 para com uma mensagem que diz como instalar.
+- **Pesos dos modelos base:** o Serafim e o BERTimbau são baixados do Hugging Face na máquina do mantenedor. Só os pesos públicos descem; nenhum texto do corpus sai da máquina (G1). O campo `revision` em `configs/train.yaml` fixa um commit. Vazio, usa o mais recente, e o commit baixado é registrado.
+- **C2:** embeddings do Serafim sem fine-tuning, normalizados, com uma regressão logística por saída e a regularização escolhida no `silver_val`, como no C1.
+  - O modelo salvo inclui uma cópia do encoder e carrega sem download.
+  - O relatório conta quantos textos passam do limite de tokens do encoder, que os corta.
+- **C3:** BERTimbau com duas cabeças lineares sobre o vetor `[CLS]`, treinadas juntas com a soma das duas entropias cruzadas. As classes são balanceadas como no C1.
+  - Configuração inicial: truncamento em 256 tokens, AdamW com taxa de 2e-5 e weight decay de 0,01, aquecimento em 10% dos passos com decaimento linear, até 3 épocas, recorte do gradiente em 1,0 e lote de 16.
+  - O treino usa fp16 na GPU. Espera-se que lote de 16 com 256 tokens caiba em 6 GB; se faltar memória, reduza o lote e aumente `grad_accumulation`.
+  - Early stopping: guarda a época com o melhor macro-F1 de tema no `silver_val` e para depois de uma época sem melhora (`patience: 1`).
+  - Depois do treino, o modelo vai para a CPU, onde a qualidade e o custo de inferência são medidos.
+  - O relatório registra quantos textos foram cortados em 256 tokens no `silver_train` e no `silver_val`, as épocas rodadas, a melhor época, o dispositivo, a GPU e o pico de memória dela. Com GPU, o tempo de treino é o tempo de GPU.
+  - As seeds são fixas, mas os kernels da GPU não são deterministas bit a bit, então dois treinos podem diferir um pouco.
+  - Os pesos ajustados derivam do corpus e ficam em `<DATA_DIR>/models/`. Nunca são publicados (G1).
+
+Motivo: o C2 responde se embeddings prontos valem a dependência, e o C3, se treinar um transformer compensa. Os dois seguem o mesmo protocolo dos demais modelos: mesmas entradas, ajuste no `silver_val`, comparação no `gold_dev` e inferência medida em CPU.
+
+Alternativas:
+
+- PyTorch como dependência obrigatória;
+- o `Trainer` do Transformers, que esconde o laço de treino e traz dependências extras;
+- fine-tuning também no C2;
+- uma cabeça só, com as classes de tema e urgência combinadas.
+
+Consequências:
+
+- O treino real do C3 depende da GPU da máquina do mantenedor, e os hiperparâmetros são um ponto de partida, a confirmar pelo early stopping e pelo tempo medido.
+- A comparação de truncamento em 512 tokens pode ser feita mudando `max_length`, mas não faz parte do plano inicial.
+- Os embeddings do Serafim são recalculados a cada treino. Um cache pode vir com a recuperação (M5), que usa o mesmo encoder.

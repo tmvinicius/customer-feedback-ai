@@ -176,7 +176,7 @@ As decisões do projeto ficam em [`docs/decisions.md`](docs/decisions.md).
 
 Os comandos abaixo são o fluxo planejado e estarão disponíveis conforme o roadmap avançar.
 
-Pré-requisitos: Python 3.12 e [uv](https://docs.astral.sh/uv/). Hoje funcionam os alvos de qualidade (`make setup`, `make lint`, `make typecheck` e `make test`), os de dados (`make data`, `make sample`, `make splits` e `make taxonomy-sample`), os de rótulos (`make annotate`, `make label-silver`, `make llm-triage` e `make gold-report`) e o treino dos modelos clássicos (`make train-local`, hoje com B0, B1 e C1). Os demais avisam o marco em que serão implementados e terminam com erro. `make help` lista todos.
+Pré-requisitos: Python 3.12 e [uv](https://docs.astral.sh/uv/). Hoje funcionam os alvos de qualidade (`make setup`, `make lint`, `make typecheck` e `make test`), os de dados (`make data`, `make sample`, `make splits` e `make taxonomy-sample`), os de rótulos (`make annotate`, `make label-silver`, `make llm-triage` e `make gold-report`) e o treino dos modelos locais (`make train-local`, com B0, B1, C1, C2 e C3). C2 e C3 usam PyTorch, que é opcional por ocupar vários GB: instale com `make setup DEEP=1`. Os demais avisam o marco em que serão implementados e terminam com erro. `make help` lista todos.
 
 Para testar o pipeline de dados sem o corpus, use o corpus sintético em uma pasta separada:
 
@@ -197,7 +197,7 @@ make label-silver gold-report LLM=fake DATA_DIR=data/synthetic
 O treino recusa rótulos do LLM falso. Para testar o fluxo com eles, marque a rodada como teste. Ela fica registrada como inválida no relatório e no MLflow local:
 
 ```bash
-make train-local ALLOW_FAKE_LABELS=1 DATA_DIR=data/synthetic
+make train-local ALLOW_FAKE_LABELS=1 MODELS="b0 b1 c1" DATA_DIR=data/synthetic
 ```
 
 As execuções ficam no MLflow local, em SQLite, e podem ser vistas com:
