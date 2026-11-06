@@ -29,8 +29,8 @@ help: ## Lista os alvos disponíveis
 
 # --- Qualidade (M0) ---
 
-setup: ## Instala dependências a partir do uv.lock
-	$(UV) sync --locked
+setup: ## Instala dependências do uv.lock (DEEP=1 inclui PyTorch, para C2 e C3)
+	$(UV) sync --locked $(if $(DEEP),--extra deep)
 
 lint: ## Ruff: lint e checagem de formatação
 	$(RUN) ruff check .
@@ -84,7 +84,7 @@ llm-triage: ## Triagem dos 4 LLMs locais em gold_dev (MODELS="tag ..." para um s
 	$(RUN) python -m customer_feedback_ai.pipelines.llm_triage \
 		$(if $(MODELS),--models $(MODELS)) $(if $(FRESH),--fresh)
 
-train-local: ## Treina e mede B0, B1 e C1 no silver, com MLflow local (MODELS="b0 c1", TRAIN_SIZE=n)
+train-local: ## Treina e mede B0, B1, C1, C2 e C3 no silver, com MLflow local (MODELS="b0 c1", TRAIN_SIZE=n)
 	$(RUN) python -m customer_feedback_ai.pipelines.train_local \
 		$(if $(MODELS),--models $(MODELS)) $(if $(TRAIN_SIZE),--train-size $(TRAIN_SIZE)) \
 		$(if $(ALLOW_FAKE_LABELS),--allow-fake-labels)

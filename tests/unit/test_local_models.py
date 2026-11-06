@@ -1,4 +1,7 @@
-"""Local models B0, B1 and C1, their measurements and `make train-local`. Synthetic data only."""
+"""Local models B0, B1 and C1, their measurements and `make train-local`. Synthetic data only.
+
+C2 and C3 (PyTorch) are tested in test_deep_models.py.
+"""
 
 import json
 import sqlite3
@@ -18,8 +21,9 @@ from customer_feedback_ai.labeling.gold import GOLD_DEV
 from customer_feedback_ai.labeling.silver import SILVER_TRAIN
 from customer_feedback_ai.labeling.taxonomy import Taxonomy, load_taxonomy
 from customer_feedback_ai.llm.fake import FakeLLM
+from customer_feedback_ai.models import registry
 from customer_feedback_ai.models.base import LabeledTexts, fold
-from customer_feedback_ai.models.baselines import KeywordRules, MajorityBaseline
+from customer_feedback_ai.models.baselines import KeywordRules, MajorityBaseline, keyword_pattern
 from customer_feedback_ai.models.config import (
     C1Config,
     MeasurementConfig,
@@ -31,7 +35,13 @@ from customer_feedback_ai.models.config import (
     load_train_config,
 )
 from customer_feedback_ai.models.dataset import INPUT_COLUMNS, load_silver
-from customer_feedback_ai.models.measure import per_item_latency
+from customer_feedback_ai.models.measure import (
+    InferenceProfile,
+    artifact_bytes,
+    profile_in_subprocess,
+    rss_method,
+    run_per_item,
+)
 from customer_feedback_ai.models.tfidf import TfidfLogReg
 from customer_feedback_ai.pipelines import train_local
 
@@ -87,6 +97,50 @@ def test_rules_ignore_case_and_accents_and_first_rule_wins() -> None:
     assert fold("  Açúcar   É  ") == "acucar e"
 
 
+def test_keywords_match_whole_words_unless_they_are_stems() -> None:
+    whole = keyword_pattern(["uti", "sac"])
+    assert whole.search(fold("Minha mãe está na UTI."))
+    assert not whole.search(fold("Utilizei o cupom"))
+    assert not whole.search(fold("Fiz uma transação e fui sacar"))
+    stem = keyword_pattern(["negativ*"])
+    assert stem.search(fold("Fui negativado"))
+    assert not stem.search(fold("resultado positivo e renegativo"))
+
+
+def test_invalid_keywords_are_rejected() -> None:
+    with pytest.raises(ValueError, match="invalid keyword"):
+        TopicRule(id="x", keywords=("a*b",))
+    with pytest.raises(ValueError, match="invalid keyword"):
+        UrgencyRules(alta=("*",))
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Utilizei o cupom e não deu desconto", ("outro", "media")),
+        ("Fiz uma transação pelo app e sumiu", ("outro", "media")),
+        ("Péssimo tratamento do atendente", ("atendimento", "media")),
+        ("O produto foi entregue com defeito", ("produto_defeito", "media")),
+        ("Meu endereço está errado no pedido", ("outro", "media")),
+        ("Cobrança indevida no cartão de crédito", ("cobranca_indevida", "media")),
+        ("Estou sem internet há três dias", ("servico_indisponivel", "alta")),
+        ("Minha mãe está na UTI e o plano negou", ("outro", "alta")),
+    ],
+)
+def test_project_rules_avoid_known_false_matches(text: str, expected: tuple[str, str]) -> None:
+    assert KeywordRules(load_rules()).predict_one(text) == expected
+
+
+def test_rules_and_majority_round_trip(tmp_path: Path) -> None:
+    rules = KeywordRules(RULES)
+    rules.save(tmp_path / "b1.json")
+    assert KeywordRules.load(tmp_path / "b1.json").predict(["golpe"]) == rules.predict(["golpe"])
+    majority = MajorityBaseline()
+    majority.fit(labeled([("a", "outro", "baixa")]))
+    majority.save(tmp_path / "b0.json")
+    assert MajorityBaseline.load(tmp_path / "b0.json").predict(["x"]) == (["outro"], ["baixa"])
+
+
 def test_rules_file_only_uses_taxonomy_topics(taxonomy: Taxonomy) -> None:
     train_local.check_rules(load_rules(), taxonomy)
     bad = RULES.model_copy(update={"fallback_topic": "inexistente"})
@@ -126,7 +180,7 @@ def test_c1_learns_separable_texts_and_round_trips(tmp_path: Path) -> None:
     assert params["chosen_c_topic"] in SMALL_C1.c_grid
     assert params["vocabulary_size"] > 0
     model.save(tmp_path / "c1.joblib")
-    again = TfidfLogReg.load(tmp_path / "c1.joblib", SMALL_C1, seed=1)
+    again = TfidfLogReg.load(tmp_path / "c1.joblib")
     assert again.predict(val.texts) == (topics, urgencies)
 
 
@@ -163,14 +217,56 @@ def test_flatten_metrics_keeps_only_numbers() -> None:
     assert flat == {"a.b": 1.0, "f": 0.5}
 
 
-def test_latency_is_measured_per_complaint() -> None:
+def test_latency_is_measured_per_complaint_after_a_warm_up() -> None:
     ticks = iter(float(n) for n in range(100))
+    cpu = iter([0.0, 0.3])
+    calls: list[list[str]] = []
+    run = run_per_item(
+        lambda texts: calls.append(list(texts)),
+        ["x", "y", "z"],
+        clock=lambda: next(ticks),
+        cpu_clock=lambda: next(cpu),
+    )
+    assert calls == [["x"], ["x"], ["y"], ["z"]]
+    profile = InferenceProfile.from_run(run, load_seconds=0.5, before=100, peak=250)
+    assert (profile.calls, profile.latency_p50_s) == (3, 1.0)
+    assert profile.cpu_seconds_per_1000 == pytest.approx(100.0)
+    assert profile.model_rss_bytes == 150
+    assert run_per_item(lambda texts: None, []).durations == ()
+
+
+def test_inference_is_profiled_in_a_fresh_process(tmp_path: Path) -> None:
     model = MajorityBaseline()
     model.fit(labeled([("a", "outro", "media")]))
-    latency = per_item_latency(model, ["x", "y", "z"], clock=lambda: next(ticks))
-    assert latency.calls == 3
-    assert latency.p50_s == 1.0
-    assert per_item_latency(model, []).calls == 0
+    model.save(tmp_path / "b0.json")
+    profile = profile_in_subprocess("b0", tmp_path / "b0.json", ["x", "y"], tmp_path / "work")
+    assert profile.calls == 2
+    assert profile.peak_rss_bytes is None or profile.peak_rss_bytes > 0
+    assert list((tmp_path / "work").iterdir()) == []  # the texts file is removed
+    with pytest.raises(DataPipelineError, match="probe for b0 failed"):
+        profile_in_subprocess("b0", tmp_path / "missing.json", ["x"], tmp_path / "work")
+
+
+@pytest.mark.skipif(rss_method() != "VmHWM", reason="Linux high-water mark only")
+def test_probe_memory_does_not_inherit_the_parent_peak(tmp_path: Path) -> None:
+    model = MajorityBaseline()
+    model.fit(labeled([("a", "outro", "media")]))
+    model.save(tmp_path / "b0.json")
+    ballast = bytearray(400 * 2**20)  # raises this process's peak by 400 MB
+    ballast[::4096] = b"x" * len(ballast[::4096])
+    profile = profile_in_subprocess("b0", tmp_path / "b0.json", ["x"], tmp_path)
+    assert profile.peak_rss_bytes is not None
+    assert profile.peak_rss_bytes < 300 * 2**20
+    assert profile.model_rss_bytes is not None
+    del ballast
+
+
+def test_artifact_size_covers_folders(tmp_path: Path) -> None:
+    (tmp_path / "m" / "sub").mkdir(parents=True)
+    (tmp_path / "m" / "a.bin").write_bytes(b"12345")
+    (tmp_path / "m" / "sub" / "b.bin").write_bytes(b"123")
+    assert artifact_bytes(tmp_path / "m") == 8
+    assert artifact_bytes(tmp_path / "m" / "a.bin") == 5
 
 
 # --- data and pipeline ---------------------------------------------------------------
@@ -180,12 +276,18 @@ def test_classifiers_read_only_the_complaint_text() -> None:
     assert INPUT_COLUMNS == (TEXT_COLUMN,)
 
 
-def test_unknown_or_later_models_fail_clearly() -> None:
-    config = TrainConfig()
-    with pytest.raises(DataPipelineError, match="step 7"):
-        train_local.build_model("c3", RULES, config)
+def test_unknown_models_fail_clearly() -> None:
     with pytest.raises(DataPipelineError, match="unknown"):
-        train_local.build_model("zz", RULES, config)
+        registry.build_model("zz", RULES, TrainConfig())
+
+
+def test_deep_models_without_pytorch_say_how_to_install(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(registry, "deep_available", lambda: False)
+    with pytest.raises(DataPipelineError, match="make setup DEEP=1"):
+        registry.require_deep(["b0", "c3"])
+    registry.require_deep(["b0", "c1"])
 
 
 def test_train_config_file_is_valid() -> None:
@@ -207,7 +309,9 @@ def test_fake_labels_are_refused_without_the_flag(
     with pytest.raises(DataPipelineError, match="FakeLLM"):
         load_silver(con, silver_paths, SILVER_TRAIN)
     with pytest.raises(DataPipelineError, match="FakeLLM"):
-        train_local.run(silver_paths, TrainConfig(), load_rules(), taxonomy, track=False)
+        train_local.run(
+            silver_paths, TrainConfig(), load_rules(), taxonomy, models=["b0"], track=False
+        )
 
 
 def test_train_local_trial_run_end_to_end(silver_paths: DataPaths, taxonomy: Taxonomy) -> None:
@@ -217,17 +321,27 @@ def test_train_local_trial_run_end_to_end(silver_paths: DataPaths, taxonomy: Tax
         measurement=MeasurementConfig(latency_samples=20),
     )
     report = train_local.run(
-        silver_paths, config, load_rules(), taxonomy, allow_fake_labels=True, train_size=150
+        silver_paths,
+        config,
+        load_rules(),
+        taxonomy,
+        models=["b0", "b1", "c1"],
+        allow_fake_labels=True,
+        train_size=150,
     )
     assert report["valid"] is False
     assert report["label_backends"] == ["fake"]
     assert report["counts"]["train_labels"] == 150
     assert report["counts"]["gold_dev_labeled"] == report["counts"]["gold_dev_queue"] > 0
     assert set(report["models"]) == {"b0", "b1", "c1"}
+    assert report["comparison_set"] == "gold_dev"
+    assert report["tuned_on_silver_val"] == ["c1"]
+    assert report["machine"]["cpu_count"]
     for name, result in report["models"].items():
         assert (silver_paths.root / result["artifact"]).exists(), name
         assert result["gold_dev"]["n"] == report["counts"]["gold_dev_labeled"]
-        assert result["cost"]["latency_calls"] == 20
+        assert result["cost"]["calls"] == 20
+        assert result["cost"]["load_seconds"] >= 0
         assert result["cost"]["artifact_bytes"] > 0
         assert result["mlflow_run_id"]
 

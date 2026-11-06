@@ -1,14 +1,17 @@
 """`make train-local`: train and measure the local models on the silver labels.
 
-Models in this step: B0 (majority class), B1 (keyword rules) and C1 (TF-IDF +
-logistic regression). C2 (Serafim) and C3 (BERTimbau) come in M3 step 7.
+Models: B0 (majority class), B1 (keyword rules), C1 (TF-IDF + logistic
+regression), C2 (Serafim embeddings + logistic regression) and C3 (BERTimbau
+fine-tuned with two heads). C2 and C3 need the optional PyTorch dependencies
+(`make setup DEEP=1`).
 
-Each model is trained on `silver_train`, tuned on `silver_val` (C1 only) and
-evaluated on `silver_val` and, when it has human labels, on `gold_dev`. The run
-measures training time, peak memory, artifact size and per-complaint latency,
-logs everything to the local MLflow store and writes an aggregate report
-(`<DATA_DIR>/reports/train_local.json`) and a manifest. Trained models stay in
-`<DATA_DIR>/models/`, outside Git (G1).
+Each model is trained on `silver_train`, tuned on `silver_val` (C1, C2 and C3)
+and evaluated on `silver_val` and, when it has human labels, on `gold_dev`, the
+set used to compare models. The run measures training time and artifact size,
+then profiles inference in a fresh CPU-only process (load time, latency p50/p95,
+CPU time per 1,000 complaints, peak memory). Everything goes to the local
+MLflow store, an aggregate report (`<DATA_DIR>/reports/train_local.json`) and a
+manifest. Trained models stay in `<DATA_DIR>/models/`, outside Git (G1).
 
 Labels from the offline FakeLLM are refused, unless `--allow-fake-labels` marks
 the run as a trial on synthetic data. A trial run is logged with `valid=false`.
@@ -36,7 +39,6 @@ from customer_feedback_ai.evaluation.tracking import Tracker
 from customer_feedback_ai.labeling.silver import SILVER_TRAIN, SILVER_VAL
 from customer_feedback_ai.labeling.taxonomy import TAXONOMY_PATH, Taxonomy, load_taxonomy
 from customer_feedback_ai.models.base import LabeledTexts, TopicUrgencyModel
-from customer_feedback_ai.models.baselines import KeywordRules, MajorityBaseline
 from customer_feedback_ai.models.config import (
     RULES_PATH,
     TRAIN_CONFIG_PATH,
@@ -46,27 +48,29 @@ from customer_feedback_ai.models.config import (
     load_train_config,
 )
 from customer_feedback_ai.models.dataset import INPUT_COLUMNS, load_gold_dev, load_silver
-from customer_feedback_ai.models.measure import artifact_bytes, per_item_latency, timed
-from customer_feedback_ai.models.tfidf import TfidfLogReg
+from customer_feedback_ai.models.measure import (
+    artifact_bytes,
+    machine,
+    profile_in_subprocess,
+    timed,
+)
+from customer_feedback_ai.models.registry import (
+    ARTIFACT_NAMES,
+    MODELS,
+    build_model,
+    require_deep,
+)
 from customer_feedback_ai.pipelines._common import LOGGER, default_paths, run_cli, write_json
 
-AVAILABLE = ("b0", "b1", "c1")
-LATER = {"c2": "M3 step 7", "c3": "M3 step 7"}
-ARTIFACT_SUFFIX = {"b0": ".json", "b1": ".json", "c1": ".joblib"}
+TUNED_ON_SILVER_VAL = frozenset({"c1", "c2", "c3"})
+COMPARISON_SET = "gold_dev"
 
 
-def build_model(name: str, rules: RulesConfig, config: TrainConfig) -> TopicUrgencyModel:
-    if name == "b0":
-        return MajorityBaseline()
-    if name == "b1":
-        return KeywordRules(rules)
-    if name == "c1":
-        return TfidfLogReg(config.c1, config.seed)
-    if name in LATER:
-        msg = f"{name} is not implemented yet ({LATER[name]})"
-        raise DataPipelineError(msg)
-    msg = f"unknown model {name!r}; choose from {list(AVAILABLE)}"
-    raise DataPipelineError(msg)
+def artifact_records(paths: DataPaths, artifact: Path) -> list[FileRecord]:
+    files = (
+        sorted(p for p in artifact.rglob("*") if p.is_file()) if artifact.is_dir() else [artifact]
+    )
+    return [file_record(path, paths.relative(path)) for path in files]
 
 
 def check_rules(rules: RulesConfig, taxonomy: Taxonomy) -> None:
@@ -91,28 +95,33 @@ def _quality(
 
 
 def train_one(
+    name: str,
     model: TopicUrgencyModel,
     train: LabeledTexts,
     val: LabeledTexts,
     gold: LabeledTexts,
     config: TrainConfig,
     artifact: Path,
+    work_dir: Path,
 ) -> dict[str, Any]:
     fitted = timed(lambda: model.fit(train, val))
     model.save(artifact)
-    latency = per_item_latency(model, val.texts[: config.measurement.latency_samples])
-    return {
+    result = {
         "params": model.params(),
         "silver_val": _quality(model, val, config),
         "gold_dev": _quality(model, gold, config),
+    }
+    # The probe loads the saved copy in a fresh process, so it measures exactly
+    # what was saved and nothing left over from training.
+    probe = profile_in_subprocess(
+        name, artifact, val.texts[: config.measurement.latency_samples], work_dir
+    )
+    return {
+        **result,
         "cost": {
             "train_seconds": fitted.seconds,
-            "train_peak_bytes": fitted.peak_bytes,
             "artifact_bytes": artifact_bytes(artifact),
-            "latency_p50_s": latency.p50_s,
-            "latency_p95_s": latency.p95_s,
-            "latency_calls": latency.calls,
-            "inference_peak_bytes": latency.peak_bytes,
+            **probe.as_dict(),
         },
     }
 
@@ -123,14 +132,19 @@ def run(
     rules: RulesConfig,
     taxonomy: Taxonomy,
     *,
-    models: Sequence[str] = AVAILABLE,
+    models: Sequence[str] = MODELS,
     allow_fake_labels: bool = False,
     train_size: int | None = None,
     track: bool = True,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> dict[str, Any]:
     check_rules(rules, taxonomy)
-    built = [build_model(name, rules, config) for name in dict.fromkeys(models)]
+    names = list(dict.fromkeys(models))
+    unknown = sorted(set(names) - set(MODELS))
+    if unknown:
+        msg = f"unknown models {unknown}; choose from {list(MODELS)}"
+        raise DataPipelineError(msg)
+    require_deep(names)
     con = connect(paths.tmp_dir)
     silver_train = load_silver(con, paths, SILVER_TRAIN, allow_offline=allow_fake_labels)
     silver_val = load_silver(con, paths, SILVER_VAL, allow_offline=allow_fake_labels)
@@ -174,9 +188,11 @@ def run(
         notes.append(f"gold_dev has human labels for {len(gold)} of {gold_queue} items")
     if not len(gold):
         notes.append("no gold_dev labels yet (G3): quality only on silver_val")
-    if any(model.name == "c1" for model in built):
+    tuned = sorted(TUNED_ON_SILVER_VAL & set(names))
+    if tuned:
         notes.append(
-            "silver_val also chose C1's regularization, so its silver_val numbers are optimistic"
+            f"silver_val also tuned {', '.join(tuned)} (regularization or early stopping), so "
+            "their silver_val numbers are optimistic; compare models on gold_dev"
         )
     if len(val) < config.measurement.latency_samples:
         notes.append(
@@ -186,16 +202,18 @@ def run(
 
     results: dict[str, Any] = {}
     outputs: list[FileRecord] = []
-    for model in built:
-        LOGGER.info("training %s on %d silver labels", model.name, len(train))
-        artifact = out_dir / f"{model.name}{ARTIFACT_SUFFIX[model.name]}"
-        result = train_one(model, train, val, gold, config, artifact)
-        outputs.append(file_record(artifact, paths.relative(artifact)))
+    for name in names:
+        LOGGER.info("training %s on %d silver labels", name, len(train))
+        model = build_model(name, rules, config)
+        artifact = out_dir / ARTIFACT_NAMES[name]
+        result = train_one(name, model, train, val, gold, config, artifact, paths.tmp_dir)
+        del model
+        outputs.extend(artifact_records(paths, artifact))
         mlflow_run = tracker.log_run(
-            f"{model.name}-{run_id}",
+            f"{name}-{run_id}",
             params={
                 **result["params"],
-                "model": model.name,
+                "model": name,
                 "seed": config.seed,
                 "train_labels": len(train),
                 "val_labels": len(val),
@@ -214,14 +232,14 @@ def run(
             },
             tags={"run_id": run_id, "valid": str(not trial).lower(), "step": "train_local"},
         )
-        results[model.name] = {
+        results[name] = {
             **result,
             "mlflow_run_id": mlflow_run,
             "artifact": paths.relative(artifact),
         }
         gold_f1 = (result["gold_dev"] or {}).get("topic_macro_f1", {}).get("value")
         val_f1 = (result["silver_val"] or {}).get("topic_macro_f1", {}).get("value")
-        LOGGER.info("%s: topic macro-F1 silver_val=%s gold_dev=%s", model.name, val_f1, gold_f1)
+        LOGGER.info("%s: topic macro-F1 silver_val=%s gold_dev=%s", name, val_f1, gold_f1)
 
     counts = {
         "silver_train_available": len(silver_train.data),
@@ -237,8 +255,10 @@ def run(
         "label_models": sorted(set(silver_train.models) | set(silver_val.models)),
         "counts": counts,
         "input_columns": list(INPUT_COLUMNS),
+        "comparison_set": COMPARISON_SET,
+        "tuned_on_silver_val": tuned,
+        "machine": machine(),
         "models": results,
-        "not_yet": dict(LATER),
         "notes": notes,
     }
     report_path = paths.reports_dir / "train_local.json"
@@ -249,7 +269,7 @@ def run(
             config={
                 "train": config.model_dump(mode="json"),
                 "rules_version": rules.version,
-                "models": [model.name for model in built],
+                "models": names,
                 "train_size": train_size,
                 "allow_fake_labels": allow_fake_labels,
             },
@@ -268,7 +288,7 @@ def run(
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--models", nargs="+", default=list(AVAILABLE), help="subset of models")
+    parser.add_argument("--models", nargs="+", default=list(MODELS), help="subset of models")
     parser.add_argument(
         "--train-size", type=int, help="use only the first n silver_train labels (learning curves)"
     )

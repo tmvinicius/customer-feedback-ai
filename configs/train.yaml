@@ -16,8 +16,43 @@ c1:
   class_weight: balanced
   max_iter: 2000
 
+# C2: embeddings do Serafim + regressão logística, um classificador por saída.
+c2:
+  encoder: PORTULAN/serafim-100m-portuguese-pt-sentence-encoder-ir
+  # Commit do Hugging Face para fixar os pesos. Vazio usa o mais recente e registra o hash.
+  revision: null
+  batch_size: 32
+  normalize: true
+  c_grid: [0.25, 1.0, 4.0]
+  class_weight: balanced
+  max_iter: 2000
+
+# C3: BERTimbau com fine-tuning e duas cabeças (tema e urgência).
+c3:
+  encoder: neuralmind/bert-base-portuguese-cased
+  revision: null
+  # Truncamento em 256 tokens; o relatório registra quantos textos são cortados.
+  max_length: 256
+  # 16 x 256 tokens em fp16 cabe em 6 GB de VRAM. Se faltar memória, reduza o lote
+  # e aumente grad_accumulation, mantendo o produto.
+  batch_size: 16
+  grad_accumulation: 1
+  eval_batch_size: 64
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  dropout: 0.1
+  epochs: 3
+  # Early stopping no macro-F1 de tema do silver_val: épocas sem melhora toleradas.
+  patience: 1
+  class_weight: balanced
+  # Dispositivo do treino (auto usa a GPU se houver). A inferência medida é sempre em CPU.
+  device: auto
+  fp16: true
+
 measurement:
-  # Latência por reclamação: chamadas individuais em pelo menos 200 textos do silver_val.
+  # Medida em processo separado, em CPU: carga, latência por chamada individual em
+  # pelo menos 200 textos do silver_val, CPU por 1.000 reclamações e pico de memória.
   latency_samples: 300
   # Intervalos de 95% por bootstrap (AGENTS.md, seção 8).
   bootstrap_resamples: 1000
